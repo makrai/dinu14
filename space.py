@@ -1,4 +1,9 @@
+import logging
+
 import numpy as np
+
+format_ = "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"
+logging.basicConfig(level=logging.DEBUG, format=format_)
 
 class Space(object):
 
@@ -23,19 +28,19 @@ class Space(object):
         id2row = []
         def filter_lines(f):
             for i,line in enumerate(f):
-                word = line.split()[0]
+                # the following three lines contain modifications by Makrai
+                if i == 300000:
+                    break
+                word = line.split(' ')[0]
                 if i != 0 and (lexicon is None or word in lexicon):
                     id2row.append(word)
                     yield line
 
         #get the number of columns
         with open(fname) as f:
-            f.readline()
-            ncols = len(f.readline().split())
-
-        with open(fname) as f:
-            m = np.matrix(np.loadtxt(filter_lines(f),
-                          comments=None, usecols=range(1,ncols)))
+            ncols = int(f.readline().strip().split()[1]) + 1 
+            m = np.asmatrix(np.loadtxt(filter_lines(f), comments=None,
+                                       usecols=range(1,ncols)))
 
         return Space(m, id2row)
 
