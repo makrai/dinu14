@@ -13,8 +13,11 @@ def get_rank(nn, gold):
     return idx + 1
 
         
-def read_dict(dict_file):
-    return [tuple(line.strip().split()) for line in file(dict_file)]
+def read_dict(dict_file, reverse=False):
+    if reverse:
+        return [tuple(reversed(line.strip().split())) for line in file(dict_file)]
+    else:
+        return [tuple(line.strip().split()) for line in file(dict_file)]
 
 
 def apply_tm(sp, tm):
