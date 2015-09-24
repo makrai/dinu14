@@ -1,6 +1,8 @@
 import sys
 import getopt
+
 import numpy as np
+
 from space import Space
 from utils import read_dict, train_tm
 
@@ -34,36 +36,9 @@ def usage(errno=0):
     sys.exit(errno)
 
 
-def main(sys_argv):
-
-    try:
-        opts, argv = getopt.getopt(sys_argv[1:], "ho:",
-                                   ["help", "output="])
-    except getopt.GetoptError, err:
-        print str(err)
-        usage()
-        sys.exit(1)
-
-    out_file = "./tm"
-    for opt, val in opts:
-        if opt in ("-o", "--output"):
-            out_file = val
-        elif opt in ("-h", "--help"):
-            usage(0)
-        else:
-            usage(1)
-
-    if len(argv) == 3:
-        source_file = argv[1]	
-        target_file = argv[2]
-	dict_file = argv[0]
-    else:
-	print str(err)
-	usage(1)
-
-
-    print "Reading the training data"
-    train_data = read_dict(dict_file)
+def main(dict_file, source_file, target_file): 
+    print "Reading: {}".format(dict_file)
+    train_data = read_dict(dict_file, reverse=("-r","") in opts)
 
     #we only need to load the vectors for the words in the training data
     #semantic spaces contain additional words
@@ -85,5 +60,30 @@ def main(sys_argv):
 
 
 if __name__ == '__main__':
-    main(sys.argv)
+    try:
+        opts, argv = getopt.getopt(sys.argv[1:], "ho:r",
+                                   ["help", "output=", "reverse-dict"])
+    except getopt.GetoptError, err:
+        print str(err)
+        usage()
+        sys.exit(1)
 
+    out_file = "./tm"
+    for opt, val in opts:
+        if opt in ("-o", "--output"):
+            out_file = val
+        elif opt in ("-h", "--help"):
+            usage(0)
+        elif opt in ("-r", "--reverse-dict"): 
+            continue
+        else:
+            usage(1)
+
+    if len(argv) == 3:
+        source_file = argv[1]	
+        target_file = argv[2]
+	dict_file = argv[0]
+    else:
+	print str(err)
+	usage(1)
+    main(dict_file, source_file, target_file) 

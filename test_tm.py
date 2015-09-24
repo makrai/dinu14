@@ -50,46 +50,12 @@ def usage(errno=0):
     sys.exit(errno)
 
 
-def main(sys_argv):
-
-    try:
-        opts, argv = getopt.getopt(sys_argv[1:], "ho:c:",
-                                   ["help", "output=", "correction="])
-    except getopt.GetoptError, err:
-        print str(err)
-        usage()
-        sys.exit(1)
-
-    out_file = "./translated_vecs"
-    additional = None
-    for opt, val in opts:
-        if opt in ("-o", "--ouput"):
-            out_file = val
-        if opt in ("-c", "--correction"):
-            try:
-                additional = int(val)
-            except ValueError:
-                usage(1)
-        elif opt in ("-h", "--help"):
-            usage(0)
-        else:
-            usage(1)
-
-    if len(argv) == 4:
-        tm_file = argv[0] 
-        test_file = argv[1]
-        source_file = argv[2]	
-	target_file = argv[3]
-
-    else:
-	print str(err)
-	usage(1)
-
+def main(tm_file, test_file, source_file, target_file, additional): 
     print "Loading the translation matrix"
     tm = np.loadtxt(tm_file)
 
     print "Reading the test data"
-    test_data = read_dict(test_file)
+    test_data = read_dict(test_file, reverse=(("-r","") in opts))
 
     #in the _source_ space, we only need to load vectors for the words in test.
     #semantic spaces may contain additional words, ALL words in the _target_ 
@@ -138,5 +104,37 @@ def main(sys_argv):
     np.savetxt("%s.wds.txt" % out_file, mapped_source_sp.id2row, fmt="%s")
 
 if __name__ == '__main__':
-    main(sys.argv)
+    try:
+        opts, argv = getopt.getopt(sys.argv[1:], "ho:c:r",
+                                   ["help", "output=", "correction=",
+                                    "reverse-dict"])
+    except getopt.GetoptError, err:
+        print str(err)
+        usage()
+        sys.exit(1)
 
+    out_file = "./translated_vecs"
+    additional = None
+    for opt, val in opts:
+        if opt in ("-o", "--ouput"):
+            out_file = val
+        if opt in ("-c", "--correction"):
+            try:
+                additional = int(val)
+            except ValueError:
+                usage(1)
+        elif opt in ("-h", "--help"):
+            usage(0)
+        elif opt in ("-r", "--reverse-dict"): 
+            continue
+        else:
+            usage(1)
+
+    if len(argv) == 4:
+        tm_file = argv[0] 
+        test_file = argv[1]
+        source_file = argv[2]	
+        target_file = argv[3] 
+    else:
+        usage(1)
+    main(tm_file, test_file, source_file, target_file, additional)
