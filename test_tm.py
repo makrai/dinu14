@@ -1,54 +1,51 @@
-import sys
-import getopt
-import numpy as np
+import argparse
 import collections
 import random
+
+import numpy as np
 
 from space import Space
 from dinu14.utils import read_dict, apply_tm, score, get_valid_data
 
-def usage(errno=0):
-    print >>sys.stderr,\
-    """
-    Given a translation matrix, test data (words and their translations) and 
-    source and target language vectors, it returns translations of source test 
-    words and computes Top N accuracy.
-
-    Usage:
-    python test_tm.py [options] trans_matrix test_data source_vecs target_vecs
-    \n\
-    Options:
-    -o --output <file>: file prefix. It prints the vectors obtained after 
-                        the translation matrix is applied (.vecs.txt and .wds.txt).
-                        Optional. Default is ./translated_vecs
-    -c --correction <int>: Number of additional elements (ADDITIONAL TO TEST DATA)
-                         to be used with Global Correction (GC) strategy. 
-                         Optional. Default, baseline retrieval is run.
-                          
-    -h --help : help
-
-    Arguments:
-    trans_matrix: <file>, translation matrix
-    test_data: <file>, list of source-target word pairs (space separated words, 
-                one word pair per line)
-    source_vecs: <file>, vectors in source language, Space-separated, with string 
-                identifier as first column (dim+1 columns, where dim is the 
-                dimensionality of the space)
-    target_vecs: <file>, vectors in target language
-
-
-    Example:
-    1) Retrieve translations with standard nearest neighbour retrieval
-
-    python test_tm.py tm.txt test_data.txt ENspace.txt ITspace.txt
-    
-    2) "Corrected" retrieval (GC). Use additional 2000 source space elements to 
-    correct for hubs (words that appear as the nearest neighbours of many points))
-
-    python -c 2000 test_tm.py tm.txt test_data.txt ENspace.txt ITspace.txt
-
-    """
-    sys.exit(errno)
+def parse_args():
+    parser = argparse.ArgumentParser(
+    description="Given a translation matrix, test data (words and their\
+        translations) and source and target language vectors, it returns\
+        translations of source test words and computes Top N accuracy.",
+        epilog='\n\
+        Example:\n\
+        1) Retrieve translations with standard nearest neighbour retrieval\n\
+        \n\
+        python test_tm.py tm.txt test_data.txt ENspace.txt ITspace.txt\n\
+        \n\
+        2) "Corrected" retrieval (GC). Use additional 2000 source space\n\
+        elements to correct for hubs (words that appear as the nearest\n\
+        neighbours of many points))\n\
+        \n\
+        python -c 2000 test_tm.py tm.txt test_data.txt ENspace.txt ITspace.txt')
+    parser.add_argument('mx_fn', help='translation matrix')
+    parser.add_argument(
+        'seed_fn',
+        help="train dictionary, list of word pairs (space separated words,\
+        one word pair per line")
+    parser.add_argument(
+        'source_fn',
+        help="vectors in source language. Space-separated, with string\
+        identifier as first column (dim+1 columns, where dim is the\
+        dimensionality of the space")
+    parser.add_argument(
+        'target_fn',
+        help="vectors in target language")
+    parser.add_argument('--reverse', action='store_true') 
+    parser.add_argument(
+        '--correction', type=int,
+        help='Number of additional elements (ADDITIONAL TO TEST DATA) to be\
+        used with Global Correction (GC) strategy.')
+    parser.add_argument(
+        '--mapped_vecs', default='./translated_vecs',
+        help='File prefix. It prints the vectors obtained after the\
+        translation matrix is applied (.vecs.txt and .wds.txt).')
+    return parser.parse_args()
 
 
 def test_wrapper(tm_file, test_file, source_file, target_file, additional,
@@ -105,42 +102,11 @@ def test_wrapper(tm_file, test_file, source_file, target_file, additional,
         np.savetxt("%s.vecs.txt" % mapped_vecs_f, mapped_source_sp.mat)
         np.savetxt("%s.wds.txt" % mapped_vecs_f, mapped_source_sp.id2row, fmt="%s")
 
-    return score(mapped_source_sp, target_sp, gold, additional)
+    return score(mapped_source_sp, target_sp, gold, additional) 
 
-if __name__ == '__main__':
-    try:
-        opts, argv = getopt.getopt(sys.argv[1:], "ho:c:r",
-                                   ["help", "output=", "correction=",
-                                    "reverse-dict"])
-    except getopt.GetoptError, err:
-        print str(err)
-        usage()
-        sys.exit(1)
-
-    mapped_vecs_f = "./translated_vecs"
-    additional = None
-    for opt, val in opts:
-        if opt in ("-o", "--ouput"):
-            mapped_vecs_f = val
-        if opt in ("-c", "--correction"):
-            try:
-                additional = int(val)
-            except ValueError:
-                usage(1)
-        elif opt in ("-h", "--help"):
-            usage(0)
-        elif opt in ("-r", "--reverse-dict"): 
-            continue
-        else:
-            usage(1)
-
-    if len(argv) == 4:
-        tm_file = argv[0] 
-        test_file = argv[1]
-        source_file = argv[2]	
-        target_file = argv[3] 
-    else:
-        usage(1)
-    test_wrapper(
-        tm_file, test_file, source_file, target_file, additional,
-        mapped_vecs_f=mapped_vecs_f, reverse=(("-r","") in opts))
+if __name__ == "__main__":
+    args = parse_args()
+    #with open(args.seed_fn) as test_file:
+    test_wrapper(args.mx_fn,  args.seed_fn, args.source_fn, args.target_fn,
+                     args.correction, mapped_vecs_f=args.mapped_vecs,
+                     reverse=args.reverse)
