@@ -90,4 +90,4 @@ def score(sp1, sp2, gold, additional):
                                                            sp1.mat.shape[0]) 
     for k in [1,5,10]:
         print "Prec@%d: %.3f" % (k, prec_at(ranks, k))
-        
+    return prec_at(ranks, 1)
