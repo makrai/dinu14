@@ -3,8 +3,9 @@ import getopt
 import numpy as np
 import collections
 import random
+
 from space import Space
-from utils import read_dict, apply_tm, score, get_valid_data
+from dinu14.utils import read_dict, apply_tm, score, get_valid_data
 
 def usage(errno=0):
     print >>sys.stderr,\
@@ -50,12 +51,13 @@ def usage(errno=0):
     sys.exit(errno)
 
 
-def main(tm_file, test_file, source_file, target_file, additional): 
+def test_wrapper(tm_file, test_file, source_file, target_file, additional,
+                 mapped_vecs_f=None, reverse=False): 
     print "Loading the translation matrix"
     tm = np.loadtxt(tm_file)
 
     print "Reading the test data"
-    test_data = read_dict(test_file, reverse=(("-r","") in opts))
+    test_data = read_dict(test_file, reverse=reverse)
 
     #in the _source_ space, we only need to load vectors for the words in test.
     #semantic spaces may contain additional words, ALL words in the _target_ 
@@ -75,6 +77,7 @@ def main(tm_file, test_file, source_file, target_file, additional):
         additional = min(additional, len(lexicon) - len(source_words))
         #we sample additional elements that are not already in source_words
         random.seed(100)
+        print additional
         lexicon = random.sample(list(lexicon.difference(source_words)), additional)
         
         #load the source space
@@ -97,11 +100,12 @@ def main(tm_file, test_file, source_file, target_file, additional):
     for k, v in test_data:
         gold[k].add(v)
 
-    score(mapped_source_sp, target_sp, gold, additional)
+    if mapped_vecs_f:
+        print "Printing mapped vectors: %s" % mapped_vecs_f
+        np.savetxt("%s.vecs.txt" % mapped_vecs_f, mapped_source_sp.mat)
+        np.savetxt("%s.wds.txt" % mapped_vecs_f, mapped_source_sp.id2row, fmt="%s")
 
-    print "Printing mapped vectors: %s" % out_file
-    np.savetxt("%s.vecs.txt" % out_file, mapped_source_sp.mat)
-    np.savetxt("%s.wds.txt" % out_file, mapped_source_sp.id2row, fmt="%s")
+    return score(mapped_source_sp, target_sp, gold, additional)
 
 if __name__ == '__main__':
     try:
@@ -113,11 +117,11 @@ if __name__ == '__main__':
         usage()
         sys.exit(1)
 
-    out_file = "./translated_vecs"
+    mapped_vecs_f = "./translated_vecs"
     additional = None
     for opt, val in opts:
         if opt in ("-o", "--ouput"):
-            out_file = val
+            mapped_vecs_f = val
         if opt in ("-c", "--correction"):
             try:
                 additional = int(val)
@@ -137,4 +141,6 @@ if __name__ == '__main__':
         target_file = argv[3] 
     else:
         usage(1)
-    main(tm_file, test_file, source_file, target_file, additional)
+    test_wrapper(
+        tm_file, test_file, source_file, target_file, additional,
+        mapped_vecs_f=mapped_vecs_f, reverse=(("-r","") in opts))
