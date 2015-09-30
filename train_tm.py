@@ -1,4 +1,5 @@
 import argparse
+import logging
 
 import numpy as np
 
@@ -27,35 +28,34 @@ def parse_args():
     return parser.parse_args()
 
 
-def train_wrapper(dict_file, source_fn, target_fn, reverse=False, mx_fn=None):
-    print "Reading: {}".format(dict_file)
-    train_data = read_dict(dict_file, reverse=reverse)
+def train_wrapper(seed_fn, source_fn, target_fn, reverse=False, mx_fn=None,
+                  train_size=5000):
+    format_ = "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"
+    logging.basicConfig(level=logging.DEBUG, format=format_)
+
+    train_data = read_dict(seed_fn, reverse=reverse)
 
     #we only need to load the vectors for the words in the training data
     #semantic spaces contain additional words
     source_words, target_words = zip(*train_data)
 
-    print "Reading: %s" % source_fn
     source_sp = Space.build(source_fn, set(source_words))
     source_sp.normalize()
 
-    print "Reading: %s" % target_fn
     target_sp = Space.build(target_fn, set(target_words))
     target_sp.normalize()
 
-    print "Learning the translation matrix"
-    tm = train_tm(source_sp, target_sp, train_data)
+    logging.info("Learning the translation matrix")
+    tm, last_train = train_tm(source_sp, target_sp, train_data, train_size)
 
     if mx_fn:
-        print "Printing the translation matrix"
+        logging.info("Printing the translation matrix")
         np.savetxt("%s.txt" % mx_fn, tm)
 
-    return tm
+    return tm, last_train
 
 
 if __name__ == '__main__':
     args = parse_args() 
-    print args
-    #with open(args.seed_fn) as dict_f:
     train_wrapper(args.seed_fn, args.source_fn, args.target_fn,
                   reverse=args.reverse, mx_fn=args.mx_fn)

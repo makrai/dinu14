@@ -1,6 +1,7 @@
 import argparse
 import collections
 import random
+import logging
 
 import numpy as np
 
@@ -36,61 +37,63 @@ def parse_args():
     parser.add_argument(
         'target_fn',
         help="vectors in target language")
-    parser.add_argument('--reverse', action='store_true') 
+    parser.add_argument('--reverse', action='store_true')
     parser.add_argument(
         '--correction', type=int,
         help='Number of additional elements (ADDITIONAL TO TEST DATA) to be\
         used with Global Correction (GC) strategy.')
     parser.add_argument(
-        '--mapped_vecs', default='./translated_vecs',
+        '--mapped_vecs', 
         help='File prefix. It prints the vectors obtained after the\
         translation matrix is applied (.vecs.txt and .wds.txt).')
     return parser.parse_args()
 
 
-def test_wrapper(tm_file, test_file, source_file, target_file, additional,
-                 mapped_vecs_f=None, reverse=False): 
-    print "Loading the translation matrix"
-    tm = np.loadtxt(tm_file)
+def test_wrapper(tm, seed_fn, source_file, target_file, additional,
+                 mapped_vecs_f=None, reverse=False, first_test=0):
+    format_ = "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"
+    logging.basicConfig(level=logging.DEBUG, format=format_)
+    if isinstance(tm, basestring):
+        logging.info("Loading the translation matrix")
+        tm = np.loadtxt(tm)
 
-    print "Reading the test data"
-    test_data = read_dict(test_file, reverse=reverse)
+    logging.info("Reading the test data")
+    test_data = read_dict(seed_fn, reverse=reverse, skiprows=first_test,
+                          needed=1000)
 
     #in the _source_ space, we only need to load vectors for the words in test.
-    #semantic spaces may contain additional words, ALL words in the _target_ 
+    #semantic spaces may contain additional words, ALL words in the _target_
     #space are used as the search space
     source_words, _ = zip(*test_data)
     source_words = set(source_words)
 
-    print "Reading: %s" % source_file
-    if not additional:
-        source_sp = Space.build(source_file, source_words)
-    else:
+    if additional:
         #read all the words in the space
-        lexicon = set(np.loadtxt(source_file, skiprows=1, dtype=str, 
+        lexicon = set(np.loadtxt(source_file, skiprows=1, dtype=str,
                                     comments=None, usecols=(0,)).flatten())
-        #the max number of additional+test elements is bounded by the size 
+        #the max number of additional+test elements is bounded by the size
         #of the lexicon
         additional = min(additional, len(lexicon) - len(source_words))
         #we sample additional elements that are not already in source_words
         random.seed(100)
-        print additional
+        logging.info(additional)
         lexicon = random.sample(list(lexicon.difference(source_words)), additional)
-        
+
         #load the source space
         source_sp = Space.build(source_file, source_words.union(set(lexicon)))
-    
+    else:
+        source_sp = Space.build(source_file, source_words)
+
     source_sp.normalize()
 
-    print "Reading: %s" % target_file
     target_sp = Space.build(target_file)
     target_sp.normalize()
 
-    print "Translating" #translates all the elements loaded in the source space
+    logging.info("Translating") #translates all the elements loaded in the source space
     mapped_source_sp = apply_tm(source_sp, tm)
-    
-    print "Retrieving translations"
-    test_data = get_valid_data(source_sp, target_sp, test_data)
+
+    logging.info("Retrieving translations")
+    test_data, _ = get_valid_data(source_sp, target_sp, test_data)
 
     #turn test data into a dictionary (a word can have mutiple translation)
     gold = collections.defaultdict(set)
@@ -98,15 +101,14 @@ def test_wrapper(tm_file, test_file, source_file, target_file, additional,
         gold[k].add(v)
 
     if mapped_vecs_f:
-        print "Printing mapped vectors: %s" % mapped_vecs_f
+        logging.info("Printing mapped vectors: %s" % mapped_vecs_f)
         np.savetxt("%s.vecs.txt" % mapped_vecs_f, mapped_source_sp.mat)
         np.savetxt("%s.wds.txt" % mapped_vecs_f, mapped_source_sp.id2row, fmt="%s")
 
-    return score(mapped_source_sp, target_sp, gold, additional) 
+    return score(mapped_source_sp, target_sp, gold, additional)
 
 if __name__ == "__main__":
     args = parse_args()
-    #with open(args.seed_fn) as test_file:
     test_wrapper(args.mx_fn,  args.seed_fn, args.source_fn, args.target_fn,
                      args.correction, mapped_vecs_f=args.mapped_vecs,
                      reverse=args.reverse)
