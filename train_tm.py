@@ -1,89 +1,61 @@
-import sys
-import getopt
+import argparse
+import logging
 
 import numpy as np
 
 from space import Space
 from utils import read_dict, train_tm
 
-def usage(errno=0):
-    print >>sys.stderr,\
-    """
-    Given train data (pairs of words and their translation), source language and 
-    target language vectors, it outputs a translation matrix between source and 
-    target spaces.
-
-    Usage:
-    python train_tm.py [options] train_data source_vecs target_vecs 
-    \n\
-    Options:
-    -o --output <file>: output file prefix. Optional. Default is ./tm
-    -h --help : help
-
-    Arguments:
-    train_data: <file>, train dictionary, list of word pairs (space separated words, 
-            one word pair per line)
-    source_vecs: <file>, vectors in source language. Space-separated, with string 
-                identifier as first column (dim+1 columns, where dim is the dimensionality
-                of the space)
-    target_vecs: <file>, vectors in target language
-
-
-    Example:
-    python train_tm.py train_data.txt ENspace.pkl ITspace.pkl
-
-    """
-    sys.exit(errno)
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Given train data (pairs of words and their translation),\
+        source language and target language vectors, it outputs a translation\
+        matrix between source and target spaces.")
+    parser.add_argument('--mx_fn', help='File prefix.')
+    parser.add_argument(
+        'seed_fn',
+        help="train dictionary, list of word pairs (space separated words,\
+        one word pair per line")
+    parser.add_argument(
+        'source_fn',
+        help="vectors in source language. Space-separated, with string\
+        identifier as first column (dim+1 columns, where dim is the\
+        dimensionality of the space")
+    parser.add_argument(
+        'target_fn',
+        help="vectors in target language")
+    parser.add_argument('--reverse', action='store_true') 
+    return parser.parse_args()
 
 
-def main(dict_file, source_file, target_file): 
-    print "Reading: {}".format(dict_file)
-    train_data = read_dict(dict_file, reverse=("-r","") in opts)
+def train_wrapper(seed_fn, source_fn, target_fn, reverse=False, mx_fn=None,
+                  train_size=5000):
+    format_ = "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"
+    logging.basicConfig(level=logging.DEBUG, format=format_)
+
+    train_data = read_dict(seed_fn, reverse=reverse)
 
     #we only need to load the vectors for the words in the training data
     #semantic spaces contain additional words
     source_words, target_words = zip(*train_data)
 
-    print "Reading: %s" % source_file
-    source_sp = Space.build(source_file, set(source_words))
+    source_sp = Space.build(source_fn, set(source_words))
     source_sp.normalize()
 
-    print "Reading: %s" % target_file
-    target_sp = Space.build(target_file, set(target_words))
+    target_sp = Space.build(target_fn, set(target_words))
     target_sp.normalize()
 
-    print "Learning the translation matrix"
-    tm = train_tm(source_sp, target_sp, train_data)
+    logging.info("Learning the translation matrix")
+    tm, last_train = train_tm(source_sp, target_sp, train_data, train_size)
 
-    print "Printing the translation matrix"
-    np.savetxt("%s.txt" % out_file, tm)
+    if mx_fn:
+        logging.info("Printing the translation matrix")
+        np.savetxt("%s.txt" % mx_fn, tm)
+
+    return tm, last_train
 
 
 if __name__ == '__main__':
-    try:
-        opts, argv = getopt.getopt(sys.argv[1:], "ho:r",
-                                   ["help", "output=", "reverse-dict"])
-    except getopt.GetoptError, err:
-        print str(err)
-        usage()
-        sys.exit(1)
-
-    out_file = "./tm"
-    for opt, val in opts:
-        if opt in ("-o", "--output"):
-            out_file = val
-        elif opt in ("-h", "--help"):
-            usage(0)
-        elif opt in ("-r", "--reverse-dict"): 
-            continue
-        else:
-            usage(1)
-
-    if len(argv) == 3:
-        source_file = argv[1]	
-        target_file = argv[2]
-	dict_file = argv[0]
-    else:
-	print str(err)
-	usage(1)
-    main(dict_file, source_file, target_file) 
+    args = parse_args() 
+    train_wrapper(args.seed_fn, args.source_fn, args.target_fn,
+                  reverse=args.reverse, mx_fn=args.mx_fn)
