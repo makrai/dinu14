@@ -18,16 +18,19 @@ def get_rank(nn, gold):
 def read_dict(dict_filen, reverse=False, skiprows=0, needed=-1):
     logging.info("Reading: {} from line #{}".format(dict_filen, skiprows))
     pairs = []
+    line_i = -1
     with open(dict_filen) as dict_file:
         for _ in range(skiprows):
             dict_file.readline()
         for i, line in enumerate(dict_file):
             if i == needed:
+                line_i = i
                 break
             pair = line.strip().split()
             if reverse:
                 pair = reversed(pair)
             pairs.append(tuple(pair))
+    logging.info("Seed exploited until line #{}".format(line_i))
     return pairs
 
 
@@ -66,49 +69,57 @@ def train_tm(sp1, sp2, data, train_size):
     return tm, last_train
 
 
-def score(sp1, sp2, gold, additional):
+def score(mapped_sr_sp, tg_sp, gold, additional):
 
-    sp1.normalize()
+    mapped_sr_sp.normalize()
 
     logging.info("Computing cosines and sorting target space elements")
-    sim_mat = -sp2.mat*sp1.mat.T
+    sim_mx = -tg_sp.mat*mapped_sr_sp.mat.T
 
-    logging.debug('')
     if additional:
         #for each element, computes its rank in the ranked list of
         #similarites. sorting done on the opposite axis (inverse querying)
-        srtd_idx = np.argsort(np.argsort(sim_mat, axis=1), axis=1)
+        rank_mx = np.ones((0, sim_mx.shape[1]))
+        split_size = 2000
+        for start in range(0, sim_mx.shape[0], split_size):
+            logging.info('neighbors of {} target points ranked'.format(start))
+            rank_mx = np.concatenate((
+                rank_mx, 
+                np.argsort(
+                    np.argsort(sim_mx[
+                        start: min(start + split_size, sim_mx.shape[0]), :], 
+                    axis=1), axis=1)))
 
         #for each element, the resulting rank is combined with cosine scores.
         #the effect will be of breaking the ties, because cosines are smaller
         #than 1. sorting done on the standard axis (regular NN querying)
-        srtd_idx = np.argsort(srtd_idx + sim_mat, axis=0)
+        rank_mx = np.argsort(rank_mx + sim_mx, axis=0)
     else:
-        srtd_idx = np.argsort(sim_mat, axis=0)
+        rank_mx = np.argsort(sim_mx, axis=0)
 
-    logging.debug('')
     ranks = []
-    for i,el1 in enumerate(gold.keys()):
+    for i,el1 in enumerate(gold):
+        logging.debug(gold[el1])
 
-        sp1_idx = sp1.row2id[el1]
+        mapped_sr_sp_idx = mapped_sr_sp.row2id[el1]
 
         # append the top 5 translations
         translations = []
         for j in range(5):
-            sp2_idx = srtd_idx[j, sp1_idx]
-            word, score = sp2.id2row[sp2_idx], -sim_mat[sp2_idx, sp1_idx]
+            tg_sp_idx = rank_mx[j, mapped_sr_sp_idx]
+            word, score = tg_sp.id2row[tg_sp_idx], -sim_mx[tg_sp_idx, mapped_sr_sp_idx]
             translations.append("\t\t%s:%.3f" % (word, score))
 
         translations = "\n".join(translations)
 
         #get the rank of the (highest-ranked) translation
-        rnk = get_rank(srtd_idx[:,sp1_idx].A.ravel(),
-                        [sp2.row2id[el] for el in gold[el1]])
+        rnk = get_rank(rank_mx[:,mapped_sr_sp_idx].A.ravel(),
+                        [tg_sp.row2id[el] for el in gold[el1]])
         ranks.append(rnk)
 
-        logging.debug("\nId: {}".format(len(ranks)))
+        logging.debug("Id: {}".format(len(ranks)))
         logging.debug("\tSource: {}".format(el1))
-        logging.debug("\nTranslation: {}".format(translations))
+        logging.debug("\tTranslation: {}".format(translations))
         logging.debug("\tGold: {}".format(gold[el1]))
         logging.debug("\tRank: {}".format(rnk))
 
@@ -116,7 +127,7 @@ def score(sp1, sp2, gold, additional):
     if additional:
         logging.info(
             "Total extra elements, Test({}) + Additional:{}".format(
-                len(gold.keys()), sp1.mat.shape[0]))
+                len(gold.keys()), mapped_sr_sp.mat.shape[0]))
     for k in [1,5,10]:
         logging.info("Prec@%d: %.3f" % (k, prec_at(ranks, k)))
     return prec_at(ranks, 1)
