@@ -10,43 +10,41 @@ from dinu14.utils import read_dict, apply_tm, score, get_valid_data
 
 class MxTester():
     def __init__(self, args):
-        self.tm = args['mx_fn']
-        self.additional = args['additional'] 
-        self.main(args)
+        self.tm = args.mx_fn
+        self.additional = args.additional 
+        self.args = args
 
-    def main(self, args):
-        self.get_logger(args['log_fn'])
+    def test_wrapper(self):
+        if hasattr(self.args, 'log_fn'):
+            self.get_logger(self.args.log_fn)
 
         if isinstance(self.tm, basestring):
             logging.info("Loading the translation matrix")
             self.tm = np.loadtxt(self.tm)
 
-        logging.info("Reading the test data")
-        test_data = read_dict(args['seed_fn'], reverse=args['reverse'],
-                              skiprows=args['first_test'], needed=1000)
+        test_data = read_dict(self.args.seed_fn, reverse=self.args.reverse,
+                              skiprows=self.args.test_from_line, needed=1000)
 
-        source_sp = self.build_source_sp(args['source_fn'], test_data)
+        source_sp = self.build_source_sp(self.args.source_fn, test_data) 
 
-
-        target_sp = Space.build(args['target_fn'])
+        target_sp = Space.build(self.args.target_fn)
         target_sp.normalize()
 
-        logging.info(
-            "Translating all the elements loaded in the source space")
-        mapped_source_sp = apply_tm(source_sp, self.tm)
-
-        logging.info("Retrieving translations")
         test_data, _ = get_valid_data(source_sp, target_sp, test_data)
 
         #turn test data into a dictionary (a word can have mutiple translation)
         gold = collections.defaultdict(set)
-        gold.update(dict(test_data))
+        for sr, tg in test_data:
+            gold[sr].add(tg)
 
-        if args['mapped_vecs']:
-            logging.info("Printing mapped vectors: %s" % args['mapped_vecs'])
-            np.savetxt("%s.vecs.txt" % args['mapped_vecs'], mapped_source_sp.mat)
+        logging.info(
+            "Mapping all the elements loaded in the source space")
+        mapped_source_sp = apply_tm(source_sp, self.tm)
+        if hasattr(self.args, 'mapped_vecs') and self.args.mapped_vecs:
+            logging.info("Printing mapped vectors: %s" % self.args.mapped_vecs)
+            np.savetxt("%s.vecs.txt" % self.args.mapped_vecs, mapped_source_sp.mat)
             np.savetxt(
-                "%s.wds.txt" % args['mapped_vecs'], mapped_source_sp.id2row, fmt="%s")
+                "%s.wds.txt" % self.args.mapped_vecs, mapped_source_sp.id2row, fmt="%s")
 
         return score(mapped_source_sp, target_sp, gold, self.additional)
 
@@ -54,17 +52,19 @@ class MxTester():
         logger = logging.getLogger()
         logger.setLevel(logging.DEBUG)
         if log_fn:
-            handler = logging.FileHandler(log_fn, encoding='utf8')
+            handler = logging.FileHandler(log_fn)
         else:
-            handler = logging.StreamHandler() 
+            handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter(
             "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"))
         logger.addHandler(handler)
 
     def build_source_sp(self, source_file, test_data):
-        #in the _source_ space, we only need to load vectors for the words in test.
-        #semantic spaces may contain additional words, ALL words in the _target_
-        #space are used as the search space
+        """
+        In the _source_ space, we only need to load vectors for the words in test.
+        Semantic spaces may contain additional words. 
+        All words in the _target_ space are used as the search space
+        """
         source_words, _ = zip(*test_data)
         source_words = set(source_words)
         if self.additional:
@@ -76,7 +76,7 @@ class MxTester():
             self.additional = min(self.additional, len(lexicon) - len(source_words))
             #we sample additional elements that are not already in source_words
             random.seed(100)
-            logging.info(self.additional)
+            logging.info('{} additional point(s)'.format(self.additional))
             lexicon = random.sample(list(lexicon.difference(source_words)),
                                     self.additional)
 
@@ -127,10 +127,10 @@ def parse_args():
         '--mapped_vecs', 
         help='File prefix. It prints the vectors obtained after the\
         translation matrix is applied (.vecs.txt and .wds.txt).')
-    parser.add_argument('--test-from-line', dest='first_test', type=int, 
+    parser.add_argument('--test-from-line', dest='test_from_line', type=int, 
                         default=0, help='intedex from 0')
     return parser.parse_args()
 
 
 if __name__ == "__main__":
-    MxTester(vars(parse_args())).main()
+    MxTester(parse_args()).test_wrapper()
