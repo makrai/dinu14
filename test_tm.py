@@ -8,6 +8,86 @@ import numpy as np
 from space import Space
 from dinu14.utils import read_dict, apply_tm, score, get_valid_data
 
+class MxTester():
+    def __init__(self, args):
+        self.tm = args['mx_fn']
+        self.additional = args['additional'] 
+        self.main(args)
+
+    def main(self, args):
+        self.get_logger(args['log_fn'])
+
+        if isinstance(self.tm, basestring):
+            logging.info("Loading the translation matrix")
+            self.tm = np.loadtxt(self.tm)
+
+        logging.info("Reading the test data")
+        test_data = read_dict(args['seed_fn'], reverse=args['reverse'],
+                              skiprows=args['first_test'], needed=1000)
+
+        source_sp = self.build_source_sp(args['source_fn'], test_data)
+
+
+        target_sp = Space.build(args['target_fn'])
+        target_sp.normalize()
+
+        logging.info(
+            "Translating all the elements loaded in the source space")
+        mapped_source_sp = apply_tm(source_sp, self.tm)
+
+        logging.info("Retrieving translations")
+        test_data, _ = get_valid_data(source_sp, target_sp, test_data)
+
+        #turn test data into a dictionary (a word can have mutiple translation)
+        gold = collections.defaultdict(set)
+        gold.update(dict(test_data))
+
+        if args['mapped_vecs']:
+            logging.info("Printing mapped vectors: %s" % args['mapped_vecs'])
+            np.savetxt("%s.vecs.txt" % args['mapped_vecs'], mapped_source_sp.mat)
+            np.savetxt(
+                "%s.wds.txt" % args['mapped_vecs'], mapped_source_sp.id2row, fmt="%s")
+
+        return score(mapped_source_sp, target_sp, gold, self.additional)
+
+    def get_logger(self, log_fn):
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG)
+        if log_fn:
+            handler = logging.FileHandler(log_fn, encoding='utf8')
+        else:
+            handler = logging.StreamHandler() 
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"))
+        logger.addHandler(handler)
+
+    def build_source_sp(self, source_file, test_data):
+        #in the _source_ space, we only need to load vectors for the words in test.
+        #semantic spaces may contain additional words, ALL words in the _target_
+        #space are used as the search space
+        source_words, _ = zip(*test_data)
+        source_words = set(source_words)
+        if self.additional:
+            #read all the words in the space
+            lexicon = set(np.loadtxt(source_file, skiprows=1, dtype=str,
+                                        comments=None, usecols=(0,)).flatten())
+            #the max number of additional+test elements is bounded by the size
+            #of the lexicon
+            self.additional = min(self.additional, len(lexicon) - len(source_words))
+            #we sample additional elements that are not already in source_words
+            random.seed(100)
+            logging.info(self.additional)
+            lexicon = random.sample(list(lexicon.difference(source_words)),
+                                    self.additional)
+
+            #load the source space
+            source_sp = Space.build(source_file, source_words.union(set(lexicon)))
+        else:
+            source_sp = Space.build(source_file, source_words) 
+        source_sp.normalize()
+        return source_sp
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
     description="Given a translation matrix, test data (words and their\
@@ -39,76 +119,18 @@ def parse_args():
         help="vectors in target language")
     parser.add_argument('--reverse', action='store_true')
     parser.add_argument(
-        '--correction', type=int,
-        help='Number of additional elements (ADDITIONAL TO TEST DATA) to be\
-        used with Global Correction (GC) strategy.')
+        '--additional', type=int,
+        help='Number of elements (additional to test data) to be used with\
+        Global Correction (GC) strategy.')
+    parser.add_argument('-o', '--log-file', dest='log_fn') 
     parser.add_argument(
         '--mapped_vecs', 
         help='File prefix. It prints the vectors obtained after the\
         translation matrix is applied (.vecs.txt and .wds.txt).')
+    parser.add_argument('--test-from-line', dest='first_test', type=int, 
+                        default=0, help='intedex from 0')
     return parser.parse_args()
 
 
-def test_wrapper(tm, seed_fn, source_file, target_file, additional,
-                 mapped_vecs_f=None, reverse=False, first_test=0):
-    format_ = "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"
-    logging.basicConfig(level=logging.DEBUG, format=format_)
-    if isinstance(tm, basestring):
-        logging.info("Loading the translation matrix")
-        tm = np.loadtxt(tm)
-
-    logging.info("Reading the test data")
-    test_data = read_dict(seed_fn, reverse=reverse, skiprows=first_test,
-                          needed=1000)
-
-    #in the _source_ space, we only need to load vectors for the words in test.
-    #semantic spaces may contain additional words, ALL words in the _target_
-    #space are used as the search space
-    source_words, _ = zip(*test_data)
-    source_words = set(source_words)
-
-    if additional:
-        #read all the words in the space
-        lexicon = set(np.loadtxt(source_file, skiprows=1, dtype=str,
-                                    comments=None, usecols=(0,)).flatten())
-        #the max number of additional+test elements is bounded by the size
-        #of the lexicon
-        additional = min(additional, len(lexicon) - len(source_words))
-        #we sample additional elements that are not already in source_words
-        random.seed(100)
-        logging.info(additional)
-        lexicon = random.sample(list(lexicon.difference(source_words)), additional)
-
-        #load the source space
-        source_sp = Space.build(source_file, source_words.union(set(lexicon)))
-    else:
-        source_sp = Space.build(source_file, source_words)
-
-    source_sp.normalize()
-
-    target_sp = Space.build(target_file)
-    target_sp.normalize()
-
-    logging.info("Translating") #translates all the elements loaded in the source space
-    mapped_source_sp = apply_tm(source_sp, tm)
-
-    logging.info("Retrieving translations")
-    test_data, _ = get_valid_data(source_sp, target_sp, test_data)
-
-    #turn test data into a dictionary (a word can have mutiple translation)
-    gold = collections.defaultdict(set)
-    for k, v in test_data:
-        gold[k].add(v)
-
-    if mapped_vecs_f:
-        logging.info("Printing mapped vectors: %s" % mapped_vecs_f)
-        np.savetxt("%s.vecs.txt" % mapped_vecs_f, mapped_source_sp.mat)
-        np.savetxt("%s.wds.txt" % mapped_vecs_f, mapped_source_sp.id2row, fmt="%s")
-
-    return score(mapped_source_sp, target_sp, gold, additional)
-
 if __name__ == "__main__":
-    args = parse_args()
-    test_wrapper(args.mx_fn,  args.seed_fn, args.source_fn, args.target_fn,
-                     args.correction, mapped_vecs_f=args.mapped_vecs,
-                     reverse=args.reverse)
+    MxTester(vars(parse_args())).main()

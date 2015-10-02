@@ -1,6 +1,4 @@
 import logging
-format_ = "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"
-logging.basicConfig(level=logging.INFO, format=format_)
 
 import numpy as np
 
