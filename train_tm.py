@@ -11,7 +11,7 @@ def parse_args():
         description="Given train data (pairs of words and their translation),\
         source language and target language vectors, it outputs a translation\
         matrix between source and target spaces.")
-    parser.add_argument('-o', '--mx_fn', help='File prefix.')
+    parser.add_argument('-o', '--mx_fn', help='including extension')
     parser.add_argument(
         'seed_fn',
         help="train dictionary, list of word pairs (space separated words,\
@@ -50,7 +50,7 @@ def train_wrapper(seed_fn, source_fn, target_fn, reverse=False, mx_fn=None,
 
     if mx_fn:
         logging.info("Saving the translation matrix to {}".format(mx_fn))
-        np.savetxt("%s.txt" % mx_fn, tm)
+        np.save(mx_fn, tm)
 
     return tm, last_train
 
