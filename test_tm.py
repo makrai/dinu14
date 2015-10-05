@@ -2,6 +2,7 @@ import argparse
 import collections
 import random
 import logging
+import os
 
 import numpy as np
 
@@ -9,18 +10,29 @@ from space import Space
 from dinu14.utils import read_dict, apply_tm, score, get_valid_data
 
 class MxTester():
-    def __init__(self, args):
-        self.tm = args.mx_fn
+    def __init__(self, args, tr_mx=None):
         self.additional = args.additional 
         self.args = args
+        self.tr_mx = tr_mx
 
     def test_wrapper(self):
-        if hasattr(self.args, 'log_fn'):
+        if hasattr(self.args, 'log_fn') and self.args.log_fn:
             self.get_logger(self.args.log_fn)
 
-        if isinstance(self.tm, basestring):
-            logging.info("Loading the translation matrix")
-            self.tm = np.loadtxt(self.tm)
+        if self.args.mx_fn:
+            if self.tr_mx:
+                raise Exception("Translation mx specified amibiguously.")
+            else:
+                logging.info("Loading the translation matrix")
+                _, ext = os.path.splitext(self.args.mx_fn)
+                if ext == '.npy':
+                    self.tr_mx = np.load(self.args.mx_fn)
+                elif ext == '.txt':
+                    self.tr_mx = np.loadtxt(self.args.mx_fn)
+                else:
+                    raise Exception(
+                        'Unknown extension for translation matrix: {}'.format(
+                            ext))
 
         test_data = read_dict(self.args.seed_fn, reverse=self.args.reverse,
                               skiprows=self.args.test_from_line, needed=1000)
@@ -39,7 +51,7 @@ class MxTester():
 
         logging.info(
             "Mapping all the elements loaded in the source space")
-        mapped_source_sp = apply_tm(source_sp, self.tm)
+        mapped_source_sp = apply_tm(source_sp, self.tr_mx)
         if hasattr(self.args, 'mapped_vecs') and self.args.mapped_vecs:
             logging.info("Printing mapped vectors: %s" % self.args.mapped_vecs)
             np.savetxt("%s.vecs.txt" % self.args.mapped_vecs, mapped_source_sp.mat)
@@ -74,7 +86,8 @@ class MxTester():
             #the max number of additional+test elements is bounded by the size
             #of the lexicon
             self.additional = min(self.additional, len(lexicon) - len(source_words))
-            #we sample additional elements that are not already in source_words
+            logging.info("we sample additional elements that are not" +
+                         "already in source_words")
             random.seed(100)
             logging.info('{} additional point(s)'.format(self.additional))
             lexicon = random.sample(list(lexicon.difference(source_words)),
@@ -97,13 +110,13 @@ def parse_args():
         Example:\n\
         1) Retrieve translations with standard nearest neighbour retrieval\n\
         \n\
-        python test_tm.py tm.txt test_data.txt ENspace.txt ITspace.txt\n\
+        python test_tm.py tm.npy test_data.txt ENspace.txt ITspace.txt\n\
         \n\
         2) "Corrected" retrieval (GC). Use additional 2000 source space\n\
         elements to correct for hubs (words that appear as the nearest\n\
         neighbours of many points))\n\
         \n\
-        python -c 2000 test_tm.py tm.txt test_data.txt ENspace.txt ITspace.txt')
+        python -c 2000 test_tm.py tm.npy test_data.txt ENspace.txt ITspace.txt')
     parser.add_argument('mx_fn', help='translation matrix')
     parser.add_argument(
         'seed_fn',
