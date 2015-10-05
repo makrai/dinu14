@@ -30,8 +30,8 @@ class Space(object):
         def filter_lines(f):
             for i,line in enumerate(f):
                 # the following three lines contain modifications by Makrai
-                #if i == 300000:
-                #break
+                if not lexicon and i > 300000:
+                    break
                 word = line.split(' ')[0]
                 if i != 0 and (lexicon is None or word in lexicon):
                     id2row.append(word)
