@@ -86,10 +86,8 @@ class MxTester():
             #the max number of additional+test elements is bounded by the size
             #of the lexicon
             self.additional = min(self.additional, len(lexicon) - len(source_words))
-            logging.info("we sample additional elements that are not" +
-                         "already in source_words")
             random.seed(100)
-            logging.info('{} additional point(s)'.format(self.additional))
+            logging.info("Sampling {} additional elements".format(self.additional))
             lexicon = random.sample(list(lexicon.difference(source_words)),
                                     self.additional)
 
