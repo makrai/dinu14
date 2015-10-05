@@ -80,9 +80,11 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
         #for each element, computes its rank in the ranked list of
         #similarites. sorting done on the opposite axis (inverse querying)
         rank_mx = np.ones((0, sim_mx.shape[1]))
-        split_size = 2000
+        split_size = 1000
         for start in range(0, sim_mx.shape[0], split_size):
-            logging.info('neighbors of {} target points ranked'.format(start))
+            logging.info(
+                'neighbors of {:,}/{:,} source points ranked'.format(
+                    start, sim_mx.shape[0]))
             rank_mx = np.concatenate((
                 rank_mx, 
                 np.argsort(
@@ -90,6 +92,7 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
                         start: min(start + split_size, sim_mx.shape[0]), :], 
                     axis=1), axis=1)))
 
+        logging.info('Combining ranks with cosine similarities...')
         #for each element, the resulting rank is combined with cosine scores.
         #the effect will be of breaking the ties, because cosines are smaller
         #than 1. sorting done on the standard axis (regular NN querying)
@@ -99,7 +102,6 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
 
     ranks = []
     for i,el1 in enumerate(gold):
-        logging.debug(gold[el1])
 
         mapped_sr_sp_idx = mapped_sr_sp.row2id[el1]
 
@@ -120,14 +122,14 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
         logging.debug("Id: {}".format(len(ranks)))
         logging.debug("\tSource: {}".format(el1))
         logging.debug("\tTranslation: {}".format(translations))
-        logging.debug("\tGold: {}".format(gold[el1]))
+        logging.debug("\tGold: {}".format(' '.join(gold[el1])))
         logging.debug("\tRank: {}".format(rnk))
 
     logging.info("Corrected: %s" % str(additional))
     if additional:
         logging.info(
-            "Total extra elements, Test({}) + Additional:{}".format(
-                len(gold.keys()), mapped_sr_sp.mat.shape[0]))
+            "{} test and {} additional points, {} in total{}".format(
+                len(gold.keys()), additional, mapped_sr_sp.mat.shape[0]))
     for k in [1,5,10]:
         logging.info("Prec@%d: %.3f" % (k, prec_at(ranks, k)))
     return prec_at(ranks, 1)
