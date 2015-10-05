@@ -79,18 +79,17 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
     if additional:
         #for each element, computes its rank in the ranked list of
         #similarites. sorting done on the opposite axis (inverse querying)
-        rank_mx = np.ones((0, sim_mx.shape[1]))
-        split_size = 1000
+        rank_mx = np.zeros(sim_mx.shape)
+        split_size = 10000
         for start in range(0, sim_mx.shape[0], split_size):
             logging.info(
                 'neighbors of {:,}/{:,} source points ranked'.format(
                     start, sim_mx.shape[0]))
-            rank_mx = np.concatenate((
-                rank_mx, 
-                np.argsort(
-                    np.argsort(sim_mx[
-                        start: min(start + split_size, sim_mx.shape[0]), :], 
-                    axis=1), axis=1)))
+            rank_mx[start: min(
+                start + split_size, 
+                sim_mx.shape[0]), :] = np.argsort(np.argsort(sim_mx[
+                    start: min(start + split_size, sim_mx.shape[0]), :], axis=1),
+                    axis=1)
 
         logging.info('Combining ranks with cosine similarities...')
         #for each element, the resulting rank is combined with cosine scores.
@@ -128,7 +127,7 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
     logging.info("Corrected: %s" % str(additional))
     if additional:
         logging.info(
-            "{} test and {} additional points, {} in total{}".format(
+            "{} test and {} additional points, {} in total".format(
                 len(gold.keys()), additional, mapped_sr_sp.mat.shape[0]))
     for k in [1,5,10]:
         logging.info("Prec@%d: %.3f" % (k, prec_at(ranks, k)))
