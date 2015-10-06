@@ -73,32 +73,40 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
 
     mapped_sr_sp.normalize()
 
-    logging.info("Computing cosines and sorting target space elements")
-    sim_mx = -tg_sp.mat*mapped_sr_sp.mat.T
 
     if additional:
+
         #for each element, computes its rank in the ranked list of
         #similarites. sorting done on the opposite axis (inverse querying)
-        rank_mx = np.zeros(sim_mx.shape)
+        rank_mx = np.zeros((tg_sp.mat.shape[0], mapped_sr_sp.mat.shape[0]))
+        logging.debug(rank_mx.shape)
         split_size = 10000
-        for start in range(0, sim_mx.shape[0], split_size):
+        for start in range(0, rank_mx.shape[0], split_size):
             logging.info(
-                'neighbors of {:,}/{:,} source points ranked'.format(
-                    start, sim_mx.shape[0]))
-            rank_mx[start: min(
-                start + split_size, 
-                sim_mx.shape[0]), :] = np.argsort(np.argsort(sim_mx[
-                    start: min(start + split_size, sim_mx.shape[0]), :], axis=1),
-                    axis=1)
+                'Neighbors of {:,}/{:,} source points ranked'.format(start,
+                                                                     rank_mx.shape[0]))
+            end = min(start + split_size, rank_mx.shape[0])
+            #logging.info("Computing cosines...")
+            sim_block = - tg_sp.mat[start: end, :]*mapped_sr_sp.mat.T
+            logging.debug(sim_block.shape)
+            #logging.debug("Sorting target space elements...")
+            rank_mx[start:end, :] = np.argsort(np.argsort(sim_block, axis=1),
+                                               axis=1)
+            #logging.info('Combining ranks with cosine similarities...')
+            # for each element, the resulting rank is combined with cosine
+            # scores.  the effect will be of breaking the ties, because
+            # cosines are smaller than 1. sorting done on the standard axis
+            # (regular NN querying) 
+            rank_mx[start:end, :] += sim_block
 
-        logging.info('Combining ranks with cosine similarities...')
-        #for each element, the resulting rank is combined with cosine scores.
-        #the effect will be of breaking the ties, because cosines are smaller
-        #than 1. sorting done on the standard axis (regular NN querying)
-        rank_mx = np.argsort(rank_mx + sim_mx, axis=0)
+        logging.info("Sorting by target...")
+        rank_mx = np.argsort(rank_mx, axis=0)
     else:
+        logging.info("Computing cosines and sorting target space elements")
+        sim_mx = -tg_sp.mat*mapped_sr_sp.mat.T
         rank_mx = np.argsort(sim_mx, axis=0)
 
+    logging.debug('')
     ranks = []
     for i,el1 in enumerate(gold):
 
