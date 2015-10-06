@@ -3,6 +3,7 @@ import collections
 import random
 import logging
 import os
+from itertools import izip
 
 import numpy as np
 
@@ -77,7 +78,7 @@ class MxTester():
         Semantic spaces may contain additional words. 
         All words in the _target_ space are used as the search space
         """
-        source_words, _ = zip(*test_data)
+        source_words, _ = izip(*test_data)  
         source_words = set(source_words)
         if self.additional:
             #read all the words in the space
