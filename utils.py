@@ -73,23 +73,22 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
 
     mapped_sr_sp.normalize()
 
-    logging.info("Computing cosines and sorting target space elements")
+    logging.info("Computing cosines ")
     sim_mx = -tg_sp.mat*mapped_sr_sp.mat.T
 
     if additional:
+        logging.info("Sorting target space elements")
         #for each element, computes its rank in the ranked list of
         #similarites. sorting done on the opposite axis (inverse querying)
         rank_mx = np.zeros(sim_mx.shape)
         split_size = 10000
         for start in range(0, sim_mx.shape[0], split_size):
+            end = min(start + split_size, sim_mx.shape[0])
             logging.info(
                 'neighbors of {:,}/{:,} source points ranked'.format(
                     start, sim_mx.shape[0]))
-            rank_mx[start: min(
-                start + split_size, 
-                sim_mx.shape[0]), :] = np.argsort(np.argsort(sim_mx[
-                    start: min(start + split_size, sim_mx.shape[0]), :], axis=1),
-                    axis=1)
+            rank_mx[start:end, :] = np.argsort(np.argsort(
+                sim_mx[start:end, :], axis=1), axis=1)
 
         logging.info('Combining ranks with cosine similarities...')
         #for each element, the resulting rank is combined with cosine scores.
