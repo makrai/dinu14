@@ -46,11 +46,11 @@ def get_valid_data(sp1, sp2, data, needed=-1):
     line_i = -1
     for i, (el1,el2) in enumerate(data):
         if el1 in sp1.row2id and el2 in sp2.row2id:
-            collected += 1
-            vdata.append((el1, el2))
             if collected == needed:
                 line_i = i
                 break
+            collected += 1
+            vdata.append((el1, el2))
     logging.info("Using %d word pairs" % collected)
     logging.info("Seed exploited until line #{}".format(line_i))
     return vdata, line_i
