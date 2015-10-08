@@ -21,7 +21,7 @@ class MxTester():
             self.get_logger(self.args.log_fn)
 
         if self.args.mx_fn:
-            if self.tr_mx:
+            if self is not None:
                 raise Exception("Translation mx specified amibiguously.")
             else:
                 logging.info("Loading the translation matrix")
