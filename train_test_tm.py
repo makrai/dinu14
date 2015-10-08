@@ -18,6 +18,8 @@ def parse_args():
 
 
 def train_test_wrapper(args):
+    if 'mx_fn' not in args:
+        args.mx_fn = None
     if args.mx_fn and os.path.isfile(args.mx_fn):
         if args.test_from_line is None:
             raise Exception(
@@ -26,12 +28,12 @@ def train_test_wrapper(args):
         else: 
             return MxTester(args).test_wrapper()
     else:
-        mx_fn, last_train = train_wrapper(
+        mx, last_train = train_wrapper(
             args.seed_fn, args.source_fn, args.target_fn,
             reverse=args.reverse, mx_fn=args.mx_fn,
             train_size=args.train_size)
         args.test_from_line = last_train + 1
-        return MxTester(args).test_wrapper()
+        return MxTester(args, tr_mx=mx).test_wrapper()
 
 
 if __name__ == '__main__':

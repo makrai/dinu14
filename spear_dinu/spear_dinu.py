@@ -1,3 +1,4 @@
+import argparse
 import simplejson
 import logging
 
@@ -22,12 +23,15 @@ class LinTransWrapper():
                 params['dict_i'][0]]
         source_fn = self.langs_conf['mono'][sr_code]['embed'][embed_i[0]]
         target_fn = self.langs_conf['mono'][tg_code]['embed'][embed_i[1]]
-        dinu_args = {'seed_fn': dict_fn.format(*pair),
-                     'source_fn': source_fn,
-                     'target_fn': target_fn,
-                     'reverse': params['reverse'][0]}
+        dinu_args = argparse.Namespace()
+        dinu_args_d = vars(dinu_args)
+        dinu_args_d.update({
+            'seed_fn': dict_fn.format(*pair),
+            'source_fn': source_fn,
+            'target_fn': target_fn,
+            'reverse': params['reverse'][0]})
         for key in ['additional', 'train_size']:
-            dinu_args[key] = params[key][0]
+            dinu_args_d[key] = params[key][0]
         return 1 - train_test_wrapper(dinu_args)
 
 
