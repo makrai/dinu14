@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 
 from dinu14.train_tm import train_wrapper
@@ -37,4 +38,6 @@ def train_test_wrapper(args):
 
 
 if __name__ == '__main__':
+    format_ = "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"
+    logging.basicConfig(level=logging.DEBUG, format=format_)
     train_test_wrapper(parse_args())
