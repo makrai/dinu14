@@ -8,7 +8,7 @@ class LinTransWrapper():
         format_="%(asctime)s: %(module)s (%(lineno)s) %(levelname)s %(message)s"
         logging.basicConfig(format=format_, level=logging.DEBUG)
         self.langs_conf = simplejson.load(open(
-            '/home/makrai/project/efnilex/lang.json'))
+            '/mnt/store/makrai/data/language/config.json'))
 
     def main(self, params):
         pair = ['de', 'hu']
