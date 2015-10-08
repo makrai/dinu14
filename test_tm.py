@@ -56,8 +56,8 @@ class MxTester():
         if hasattr(self.args, 'mapped_vecs') and self.args.mapped_vecs:
             logging.info("Printing mapped vectors: %s" % self.args.mapped_vecs)
             np.savetxt("%s.vecs.txt" % self.args.mapped_vecs, mapped_source_sp.mat)
-            np.savetxt(
-                "%s.wds.txt" % self.args.mapped_vecs, mapped_source_sp.id2row, fmt="%s")
+            np.savetxt("%s.wds.txt" % 
+                       self.args.mapped_vecs, mapped_source_sp.id2row, fmt="%s")
 
         return score(mapped_source_sp, target_sp, gold, self.additional)
 
