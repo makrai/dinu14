@@ -37,3 +37,15 @@ class LinTransWrapper():
 
 def main(job_id, params):
     return LinTransWrapper(job_id).main(params)
+
+if __name__ == "__main__":
+    params = {
+        "dict_i": [2],
+        "reverse": [0],
+        "corp_i": [0],
+        "hu_embed_i": [33],
+        "train_size": [25000],
+        "de_embed_i": [0],
+        "additional": [50000]
+    }
+    main(42, params)
