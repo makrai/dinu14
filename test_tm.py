@@ -10,18 +10,26 @@ import numpy as np
 from space import Space
 from dinu14.utils import read_dict, apply_tm, score, get_valid_data
 
+def get_logger(log_fn):
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    if log_fn:
+        handler = logging.FileHandler(log_fn)
+    else:
+        handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"))
+    logger.addHandler(handler)
+
 class MxTester():
     def __init__(self, args, tr_mx=None):
         self.additional = args.additional 
         self.args = args
         self.tr_mx = tr_mx
 
-    def test_wrapper(self):
-        if hasattr(self.args, 'log_fn') and self.args.log_fn:
-            self.get_logger(self.args.log_fn)
-
+    def test_wrapper(self): 
         if self.args.mx_fn:
-            if self is not None:
+            if self.tr_mx is not None:
                 raise Exception("Translation mx specified amibiguously.")
             else:
                 logging.info("Loading the translation matrix")
@@ -60,17 +68,6 @@ class MxTester():
                        self.args.mapped_vecs, mapped_source_sp.id2row, fmt="%s")
 
         return score(mapped_source_sp, target_sp, gold, self.additional)
-
-    def get_logger(self, log_fn):
-        logger = logging.getLogger()
-        logger.setLevel(logging.DEBUG)
-        if log_fn:
-            handler = logging.FileHandler(log_fn)
-        else:
-            handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"))
-        logger.addHandler(handler)
 
     def build_source_sp(self, source_file, test_data):
         """
@@ -145,4 +142,7 @@ def parse_args():
 
 
 if __name__ == "__main__":
-    MxTester(parse_args()).test_wrapper()
+    args = parse_args()
+    if hasattr(args, 'log_fn') and args.log_fn:
+        get_logger(args.log_fn)
+    MxTester(args).test_wrapper()
