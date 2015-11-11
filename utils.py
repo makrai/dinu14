@@ -40,6 +40,7 @@ def apply_tm(sp, tm):
                  sp.mat.shape[0])
     return Space(sp.mat*tm, sp.id2row)
 
+
 def get_valid_data(sp1, sp2, data, needed=-1):
     vdata = []
     collected = 0
@@ -57,47 +58,55 @@ def get_valid_data(sp1, sp2, data, needed=-1):
 
 
 def train_tm(sp1, sp2, data, train_size):
-
     data, last_train = get_valid_data(sp1, sp2, data, needed=train_size)
-
     els1, els2 = zip(*data)
     m1 = sp1.mat[[sp1.row2id[el] for el in els1],:]
     m2 = sp2.mat[[sp2.row2id[el] for el in els2],:]
-
     tm = np.linalg.lstsq(m1, m2, -1)[0]
-
     return tm, last_train
 
 
-def score(mapped_sr_sp, tg_sp, gold, additional):
-
-    mapped_sr_sp.normalize()
-
-    logging.info("Computing cosines ")
-    sim_mx = -tg_sp.mat*mapped_sr_sp.mat.T
-
-    if additional:
-        logging.info("Sorting target space elements")
-        #for each element, computes its rank in the ranked list of
-        #similarites. sorting done on the opposite axis (inverse querying)
-        rank_mx = np.zeros(sim_mx.shape)
+def get_sim_stat(additional, mapped_sr_sp, tg_sp):
+    if additional: 
+        # for each element, computes its rank in the ranked list of
+        # similarites. sorting done on the opposite axis (inverse querying)
+        rank_mx = np.zeros((tg_sp.mat.shape[0], mapped_sr_sp.mat.shape[0]),
+                           dtype='float32')
+        logging.debug(rank_mx.shape)
         split_size = 10000
-        for start in range(0, sim_mx.shape[0], split_size):
-            end = min(start + split_size, sim_mx.shape[0])
+        for start in range(0, rank_mx.shape[0], split_size):
             logging.info(
-                'neighbors of {:,}/{:,} source points ranked'.format(
-                    start, sim_mx.shape[0]))
-            rank_mx[start:end, :] = np.argsort(np.argsort(
-                sim_mx[start:end, :], axis=1), axis=1)
+                'Neighbors of {:,}/{:,} source points ranked'.format(start,
+                                                                     rank_mx.shape[0]))
+            end = min(start + split_size, rank_mx.shape[0])
+            #logging.info("Computing cosines...")
+            sim_block = - tg_sp.mat[start: end, :]*mapped_sr_sp.mat.T
+            sim_block = sim_block.astype('float32')
+            #logging.debug("Sorting target space elements...")
+            rank_mx[start:end, :] = np.argsort(np.argsort(sim_block, axis=1),
+                                               axis=1)
+            #logging.info('Combining ranks with cosine similarities...')
+            # for each element, the resulting rank is combined with cosine
+            # scores.  the effect will be of breaking the ties, because
+            # cosines are smaller than 1. sorting done on the standard axis
+            # (regular NN querying) 
+            rank_mx[start:end, :] += sim_block
 
-        logging.info('Combining ranks with cosine similarities...')
-        #for each element, the resulting rank is combined with cosine scores.
-        #the effect will be of breaking the ties, because cosines are smaller
-        #than 1. sorting done on the standard axis (regular NN querying)
-        rank_mx = np.argsort(rank_mx + sim_mx, axis=0)
+        logging.info("Sorting by target...")
+        rank_mx = np.argsort(rank_mx, axis=0)
+        sim_mx = -tg_sp.mat*mapped_sr_sp.mat.T
     else:
-        rank_mx = np.argsort(sim_mx, axis=0)
+        logging.info("Computing cosines and sorting target space elements")
+        sim_mx = -tg_sp.mat*mapped_sr_sp.mat.T
+        rank_mx = np.argsort(sim_mx, axis=0).A
+    return sim_mx, rank_mx
 
+
+def score(mapped_sr_sp, tg_sp, gold, additional): 
+    mapped_sr_sp.normalize() 
+    sim_mx, rank_mx = get_sim_stat(additional, mapped_sr_sp, tg_sp)
+
+    logging.debug('')
     ranks = []
     for i,el1 in enumerate(gold):
 
@@ -113,7 +122,7 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
         translations = "\n".join(translations)
 
         #get the rank of the (highest-ranked) translation
-        rnk = get_rank(rank_mx[:,mapped_sr_sp_idx].A.ravel(),
+        rnk = get_rank(rank_mx[:,mapped_sr_sp_idx].ravel(),
                         [tg_sp.row2id[el] for el in gold[el1]])
         ranks.append(rnk)
 
