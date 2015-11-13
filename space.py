@@ -23,7 +23,8 @@ class Space(object):
 
     @classmethod
     def build(cls, fname, lexicon=None):
-        logging.info("Reading: %s" % fname)
+        logging.info("Looking up {} words in {}".format(
+            len(lexicon) if lexicon else 'all', fname))
 
         #if lexicon is provided, only data occurring in the lexicon is loaded
         id2row = []
@@ -42,6 +43,7 @@ class Space(object):
             ncols = int(f.readline().strip().split()[1]) + 1 
             m = np.asmatrix(np.loadtxt(filter_lines(f), comments=None,
                                        usecols=range(1,ncols)))
+            logging.debug('embedding of shape {} {} read'.format(*m.shape))
 
         return Space(m, id2row)
 
