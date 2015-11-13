@@ -2,7 +2,8 @@ import argparse
 import logging
 
 from dinu14.train_tm import train_wrapper
-from dinu14.test_tm import MxTester, get_logger
+from dinu14.test_tm import MxTester
+from dinu14.utils import get_logger
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -13,7 +14,12 @@ def parse_args():
     parser.add_argument('--additional', type=int)
     parser.add_argument('--mx_fn', help='including extension', default=None)
     parser.add_argument('--train_size', type=int, default=5000)
-    parser.add_argument('--log-file', dest='log_fn') 
+    parser.add_argument('--log-file', dest='log_fn')
+    parser.add_argument('--coverage', action='store_true',
+                        dest='coverage')
+    parser.add_argument('--translate-non-supervised', action='store_true',
+                        dest='transt_non_supvisd')
+
     return parser.parse_args()
 
 
@@ -24,10 +30,10 @@ def train_test_wrapper(args):
                                        mx_fn=args.mx_fn,
                                        train_size=args.train_size)
     args.mx_fn = None
-    return MxTester(args, tr_mx=mx, exclude_from_test=used_for_train).test_wrapper()
+    logging.info('testing...')
+    return MxTester(args, tr_mx=mx,
+                    exclude_from_test=used_for_train).test_wrapper()
 
 
 if __name__ == '__main__':
-    format_ = "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"
-    logging.basicConfig(level=logging.DEBUG, format=format_)
     train_test_wrapper(parse_args())
