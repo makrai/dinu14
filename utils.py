@@ -8,6 +8,7 @@ from space import Space
 def prec_at(ranks, cut):
     return len([r for r in ranks if r <= cut])/float(len(ranks))
 
+
 def get_rank(nn, gold):
     for idx,word in enumerate(nn):
         if word in gold:
@@ -15,22 +16,29 @@ def get_rank(nn, gold):
     return idx + 1
 
 
-def read_dict(dict_filen, reverse=False, skiprows=0, needed=-1):
-    logging.info("Reading: {} from line #{}".format(dict_filen, skiprows))
+def read_dict(dict_filen, reverse=False, exclude=None, needed=-1):
+    logging.info(
+    "Reading {} translations from {} ".format(
+        needed if needed > 0 else 'all', 
+        dict_filen))
+    if exclude:
+        logging.debug('...(other than the {} that were used in training)'.format(
+            len(exclude)))
     pairs = []
-    line_i = -1
+    if not exclude:
+        exclude = set()
     with open(dict_filen) as dict_file:
-        for _ in range(skiprows):
-            dict_file.readline()
         for i, line in enumerate(dict_file):
             if i == needed:
-                line_i = i
+                logging.debug('read untill line {}'.format(i))
                 break
             pair = line.strip().split()
             if reverse:
-                pair = reversed(pair)
-            pairs.append(tuple(pair))
-    logging.info("Seed exploited until line #{}".format(line_i))
+                pair = tuple(reversed(pair))
+            if pair[0] in exclude:
+                continue
+            pairs.append(pair)
+    logging.debug('{} translations read'.format(len(pairs)))
     return pairs
 
 
@@ -40,63 +48,70 @@ def apply_tm(sp, tm):
                  sp.mat.shape[0])
     return Space(sp.mat*tm, sp.id2row)
 
+
 def get_valid_data(sp1, sp2, data, needed=-1):
     vdata = []
+    used_for_train = set()
     collected = 0
-    line_i = -1
-    for i, (el1,el2) in enumerate(data):
+    for el1,el2 in data:
         if el1 in sp1.row2id and el2 in sp2.row2id:
             if collected == needed:
-                line_i = i
                 break
             collected += 1
             vdata.append((el1, el2))
+            used_for_train.add(el1)
     logging.info("Using %d word pairs" % collected)
-    logging.info("Seed exploited until line #{}".format(line_i))
-    return vdata, line_i
+    return vdata, used_for_train
 
 
 def train_tm(sp1, sp2, data, train_size):
-
-    data, last_train = get_valid_data(sp1, sp2, data, needed=train_size)
-
+    data, used_for_train = get_valid_data(sp1, sp2, data, needed=train_size)
     els1, els2 = zip(*data)
     m1 = sp1.mat[[sp1.row2id[el] for el in els1],:]
     m2 = sp2.mat[[sp2.row2id[el] for el in els2],:]
-
     tm = np.linalg.lstsq(m1, m2, -1)[0]
+    return tm, used_for_train
 
-    return tm, last_train
 
-
-def score(mapped_sr_sp, tg_sp, gold, additional):
-
-    mapped_sr_sp.normalize()
-
-    logging.info("Computing cosines ")
-    sim_mx = -tg_sp.mat*mapped_sr_sp.mat.T
-
-    if additional:
-        logging.info("Sorting target space elements")
-        #for each element, computes its rank in the ranked list of
-        #similarites. sorting done on the opposite axis (inverse querying)
-        rank_mx = np.zeros(sim_mx.shape)
+def get_sim_stat(additional, mapped_sr_sp, tg_sp):
+    if additional: 
+        # for each element, computes its rank in the ranked list of
+        # similarites. sorting done on the opposite axis (inverse querying)
+        rank_mx = np.zeros((tg_sp.mat.shape[0], mapped_sr_sp.mat.shape[0]),
+                           dtype='float32')
+        logging.debug('rank_mx.shape={}'.format(rank_mx.shape))
         split_size = 10000
-        for start in range(0, sim_mx.shape[0], split_size):
-            end = min(start + split_size, sim_mx.shape[0])
+        for start in range(0, rank_mx.shape[0], split_size):
             logging.info(
-                'neighbors of {:,}/{:,} source points ranked'.format(
-                    start, sim_mx.shape[0]))
-            rank_mx[start:end, :] = np.argsort(np.argsort(
-                sim_mx[start:end, :], axis=1), axis=1)
+                'Neighbors of {:,}/{:,} source points ranked'.format(start,
+                                                                     rank_mx.shape[0]))
+            end = min(start + split_size, rank_mx.shape[0])
+            #logging.info("Computing cosines...")
+            sim_block = - tg_sp.mat[start: end, :]*mapped_sr_sp.mat.T
+            sim_block = sim_block.astype('float32')
+            #logging.debug("Sorting target space elements...")
+            rank_mx[start:end, :] = np.argsort(np.argsort(sim_block, axis=1),
+                                               axis=1)
+            #logging.info('Combining ranks with cosine similarities...')
+            # for each element, the resulting rank is combined with cosine
+            # scores.  the effect will be of breaking the ties, because
+            # cosines are smaller than 1. sorting done on the standard axis
+            # (regular NN querying) 
+            rank_mx[start:end, :] += sim_block
 
-        logging.info('Combining ranks with cosine similarities...')
-        #for each element, the resulting rank is combined with cosine scores.
-        #the effect will be of breaking the ties, because cosines are smaller
-        #than 1. sorting done on the standard axis (regular NN querying)
-        rank_mx = np.argsort(rank_mx + sim_mx, axis=0)
+        logging.info("Sorting by target...")
+        rank_mx = np.argsort(rank_mx, axis=0)
+        sim_mx = -tg_sp.mat*mapped_sr_sp.mat.T
     else:
-        rank_mx = np.argsort(sim_mx, axis=0)
+        logging.info("Computing cosines and sorting target space elements")
+        sim_mx = -tg_sp.mat*mapped_sr_sp.mat.T
+        rank_mx = np.argsort(sim_mx, axis=0).A
+    return sim_mx, rank_mx
+
+
+def score(mapped_sr_sp, tg_sp, gold, additional): 
+    mapped_sr_sp.normalize() 
+    sim_mx, rank_mx = get_sim_stat(additional, mapped_sr_sp, tg_sp)
 
     ranks = []
     for i,el1 in enumerate(gold):
@@ -113,7 +128,7 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
         translations = "\n".join(translations)
 
         #get the rank of the (highest-ranked) translation
-        rnk = get_rank(rank_mx[:,mapped_sr_sp_idx].A.ravel(),
+        rnk = get_rank(rank_mx[:,mapped_sr_sp_idx].ravel(),
                         [tg_sp.row2id[el] for el in gold[el1]])
         ranks.append(rnk)
 
@@ -131,3 +146,13 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
     for k in [1,5,10]:
         logging.info("Prec@%d: %.3f" % (k, prec_at(ranks, k)))
     return prec_at(ranks, 1)
+
+
+def get_logger(log_fn):
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    if log_fn:
+        handler = logging.FileHandler(log_fn)
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"))
+        logger.addHandler(handler)

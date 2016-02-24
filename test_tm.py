@@ -8,20 +8,21 @@ from itertools import izip
 import numpy as np
 
 from space import Space
-from dinu14.utils import read_dict, apply_tm, score, get_valid_data
+from dinu14.utils import read_dict, apply_tm, score, get_valid_data, get_logger
+
 
 class MxTester():
-    def __init__(self, args, tr_mx=None):
-        self.additional = args.additional 
+    def __init__(self, args, tr_mx=None, exclude_from_test=None):
+        self.additional = args.additional
         self.args = args
         self.tr_mx = tr_mx
+        if not exclude_from_test:
+            exclude_from_test = set()
+        self.exclude_from_test = exclude_from_test
 
-    def test_wrapper(self):
-        if hasattr(self.args, 'log_fn') and self.args.log_fn:
-            self.get_logger(self.args.log_fn)
-
+    def load_tr_mx(self):
         if self.args.mx_fn:
-            if self is not None:
+            if self.tr_mx is not None:
                 raise Exception("Translation mx specified amibiguously.")
             else:
                 logging.info("Loading the translation matrix")
@@ -35,15 +36,23 @@ class MxTester():
                         'Unknown extension for translation matrix: {}'.format(
                             ext))
 
-        test_data = read_dict(self.args.seed_fn, reverse=self.args.reverse,
-                              skiprows=self.args.test_from_line, needed=1000)
+    def test_wrapper(self):
+        self.load_tr_mx()
 
-        source_sp = self.build_source_sp(self.args.source_fn, test_data) 
+        logging.info('The denominator of precision {} OOV words'.format(
+                          'includes' if self.args.coverage 
+                          else "doesn't include"))
+        test_data = read_dict(self.args.seed_fn, reverse=self.args.reverse,
+                              needed=1000 if self.args.coverage else -1,
+                              exclude=self.exclude_from_test)
+
+        source_sp = self.build_src_wrapper(self.args.source_fn, test_data)
 
         target_sp = Space.build(self.args.target_fn)
         target_sp.normalize()
 
-        test_data, _ = get_valid_data(source_sp, target_sp, test_data)
+        test_data, _ = get_valid_data(source_sp, target_sp, test_data,
+                                      needed=1000)
 
         #turn test data into a dictionary (a word can have mutiple translation)
         gold = collections.defaultdict(set)
@@ -56,29 +65,18 @@ class MxTester():
         if hasattr(self.args, 'mapped_vecs') and self.args.mapped_vecs:
             logging.info("Printing mapped vectors: %s" % self.args.mapped_vecs)
             np.savetxt("%s.vecs.txt" % self.args.mapped_vecs, mapped_source_sp.mat)
-            np.savetxt("%s.wds.txt" % 
+            np.savetxt("%s.wds.txt" %
                        self.args.mapped_vecs, mapped_source_sp.id2row, fmt="%s")
 
         return score(mapped_source_sp, target_sp, gold, self.additional)
 
-    def get_logger(self, log_fn):
-        logger = logging.getLogger()
-        logger.setLevel(logging.DEBUG)
-        if log_fn:
-            handler = logging.FileHandler(log_fn)
-        else:
-            handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"))
-        logger.addHandler(handler)
-
-    def build_source_sp(self, source_file, test_data):
+    def build_src_wrapper(self, source_file, test_data):
         """
         In the _source_ space, we only need to load vectors for the words in test.
-        Semantic spaces may contain additional words. 
+        Semantic spaces may contain additional words.
         All words in the _target_ space are used as the search space
         """
-        source_words, _ = izip(*test_data)  
+        source_words, _ = izip(*test_data)
         source_words = set(source_words)
         if self.additional:
             #read all the words in the space
@@ -89,6 +87,7 @@ class MxTester():
             self.additional = min(self.additional, len(lexicon) - len(source_words))
             random.seed(100)
             logging.info("Sampling {} additional elements".format(self.additional))
+            # additional lexicon:
             lexicon = random.sample(list(lexicon.difference(source_words)),
                                     self.additional)
 
@@ -134,15 +133,18 @@ def parse_args():
         '--additional', type=int,
         help='Number of elements (additional to test data) to be used with\
         Global Correction (GC) strategy.')
-    parser.add_argument('-o', '--log-file', dest='log_fn') 
+    parser.add_argument('-o', '--log-file', dest='log_fn')
     parser.add_argument(
-        '--mapped_vecs', 
+        '--mapped_vecs',
         help='File prefix. It prints the vectors obtained after the\
         translation matrix is applied (.vecs.txt and .wds.txt).')
-    parser.add_argument('--test-from-line', dest='test_from_line', type=int, 
-                        default=0, help='intedex from 0')
+    parser.add_argument(
+        '--just-recall', action='store_false', dest='coverage')
     return parser.parse_args()
 
 
 if __name__ == "__main__":
-    MxTester(parse_args()).test_wrapper()
+    args = parse_args()
+    if hasattr(args, 'log_fn'):
+        get_logger(args.log_fn)
+    MxTester(args).test_wrapper()
