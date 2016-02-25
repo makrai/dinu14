@@ -8,7 +8,8 @@ import random
 import numpy as np
 
 from space import Space
-from dinu14.utils import read_dict, apply_tm, score, get_invocab_trans, get_logger
+from dinu14.utils import read_dict, apply_tm, score, get_invocab_trans
+from utils import get_logger, default_output_fn
 
 
 class MxTester():
@@ -19,17 +20,19 @@ class MxTester():
         self.exclude_from_test = exclude_from_test
 
     def load_tr_mx(self):
-        if self.args.mx_fn:
+        if self.args.mx_path:
             if self.tr_mx or self.exclude_from_test:
                 raise Exception(
                     "Translation mx or training words specified amibiguously.")
             else:
-                logging.info("Loading the translation matrix and words \
-                             excluded from test")
+                self.args.mx_path = default_output_fn(
+                    self.args.mx_path, self.args.seed_fn, self.args.source_fn,
+                    self.args.target_fn)
+                logging.info("Loading from {}".format(self.args.mx_path))
                 self.exclude_from_test = pickle.load(open(
-                    '{}.train_wds'.format(args.mx_fn)))
-                self.tr_mx = np.load('{}.npy'.format(args.mx_fn))
-        elif not self.tr_mx  or not self.exclude_from_test:
+                    '{}.train_wds'.format(self.args.mx_path)))
+                self.tr_mx = np.load('{}.npy'.format(self.args.mx_path))
+        elif self.tr_mx is None or not self.exclude_from_test:
             raise Exception('Translation matrix or training words unspecified')
 
     def test_wrapper(self):
@@ -50,10 +53,12 @@ class MxTester():
         test_wpairs, _ = get_invocab_trans(source_sp, target_sp,
                                               test_wpairs, needed=1000)
 
+        """
         #turn test data into a dictionary (a word can have mutiple translation)
-        gold = collections.defaultdict(set)
+        gold = collections.defaultdict(set, test_wpairs)
         for sr, tg in test_wpairs:
             gold[sr].add(tg)
+            """
 
         logging.info(
             "Mapping all the elements loaded in the source space")
@@ -72,8 +77,7 @@ class MxTester():
         test.  Semantic spaces may contain additional words.
         All words in the _target_ space are used as the search space
         """
-        source_words, _ = izip(*test_wpairs)
-        source_words = set(source_words)
+        source_words = set(test_wpairs.iterkeys())
         if self.additional:
             #read all the words in the space
             lexicon = set(np.loadtxt(source_file, skiprows=1, dtype=str,
@@ -111,7 +115,9 @@ def parse_args():
         neighbours of many points))\n\
         \n\
         python -c 2000 test_tm.py tm.npy test_wpairs.txt ENspace.txt ITspace.txt')
-    parser.add_argument('mx_fn', help='translation matrix file without extension')
+    parser.add_argument('--mx_path',
+                        help='directory or file name without extension',
+                        default='/mnt/store/makrai/project/multiwsi/trans-mx/')
     parser.add_argument(
         'seed_fn',
         help="train dictionary, list of word pairs (space separated words,\

@@ -43,7 +43,7 @@ class Space(object):
             ncols = int(f.readline().strip().split()[1]) + 1
             m = np.asmatrix(np.loadtxt(filter_lines(f), comments=None,
                                        usecols=range(1,ncols)))
-            logging.debug('embedding of shape {} {} read'.format(*m.shape))
+            logging.info('Embedding of shape {} {} read.'.format(*m.shape))
 
         return Space(m, id2word)
 

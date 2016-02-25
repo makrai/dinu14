@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 
 from dinu14.train_tm import train_wrapper
 from dinu14.test_tm import MxTester
@@ -10,7 +11,7 @@ def parse_args():
     parser.add_argument('seed_fn')
     parser.add_argument('source_fn')
     parser.add_argument('target_fn')
-    parser.add_argument('--reverse', action='store_true')
+    parser.add_argument('-r', '--reverse', action='store_true')
     parser.add_argument('--additional', type=int)
     parser.add_argument('--mx_path',
                         help='directory or file name without extension',
@@ -26,15 +27,22 @@ def parse_args():
 
 def train_test_wrapper(args):
     get_logger(args.log_fn)
-    default_output_fn(args.mx_path, args.source_fn, args.target_fn, args.seed_fn)
-    mx, used_for_train = train_wrapper(args.seed_fn, args.source_fn,
-                                       args.target_fn, reverse=args.reverse,
-                                       mx_path=args.mx_path,
-                                       train_size=args.train_size)
-    args.mx_path = None
-    logging.info('Testing...')
-    return MxTester(args, tr_mx=mx,
-                    exclude_from_test=used_for_train).test_wrapper()
+    args.mx_path = default_output_fn(args.mx_path, args.seed_fn,
+                                     args.source_fn, args.target_fn) 
+    if (os.path.isfile('{}.npy'.format(args.mx_path)) and 
+            os.path.isfile('{}.train_wds'.format(args.mx_path))):
+        logging.info('Testing {}...'.format(args.mx_path))
+        return MxTester(args).test_wrapper()
+    else:
+        mx, used_for_train = train_wrapper(args.seed_fn, args.source_fn,
+                                           args.target_fn,
+                                           reverse=args.reverse,
+                                           mx_path=args.mx_path,
+                                           train_size=args.train_size)
+        args.mx_path = None
+        logging.info('Testing...')
+        return MxTester(args, tr_mx=mx,
+                        exclude_from_test=used_for_train).test_wrapper()
 
 
 if __name__ == '__main__':

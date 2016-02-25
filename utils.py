@@ -1,3 +1,4 @@
+from collections import defaultdict
 import logging
 import os
 
@@ -23,23 +24,24 @@ def read_dict(dict_filen, reverse=False, exclude=None, needed=-1):
         needed if needed > 0 else 'all',
         dict_filen))
     if exclude:
-        logging.debug('...(other than the {} that were used in training)'.format(
-            len(exclude)))
-    pairs = dict()
+        logging.info(
+            '...(other than the {} that were used in training)'.format(
+                len(exclude)))
+    pairs = defaultdict(set)
     if not exclude:
         exclude = set()
     with open(dict_filen) as dict_file:
         for i, line in enumerate(dict_file):
             if i == needed:
-                logging.debug('read untill line {}'.format(i))
+                logging.info('read untill line {}'.format(i))
                 break
             pair = line.strip().split()
             if reverse:
                 pair = tuple(reversed(pair))
             if pair[0] in exclude:
                 continue
-            pairs[pair[0]] = pair[1]
-    logging.debug('{} translations read'.format(len(pairs)))
+            pairs[pair[0]].add(pair[1])
+    logging.info('{} translations read'.format(len(pairs)))
     return pairs
 
 
@@ -58,11 +60,11 @@ def get_invocab_trans(sp1, sp2, seed_trans, needed=-1):
         if collected == needed:
             break
         if word1 in seed_trans:
-            word2 = seed_trans[word1]
-            if word2 in sp2.word2id:
-                collected += 1
-                invoc_trans.append((word1, word2))
-                used_for_train.add(word1)
+            for word2 in seed_trans[word1]:
+                if word2 in sp2.word2id:
+                    collected += 1
+                    invoc_trans.append((word1, word2))
+                    used_for_train.add(word1)
     logging.info("Using %d word pairs" % collected)
     return invoc_trans, used_for_train
 
@@ -83,7 +85,7 @@ def get_sim_stat(additional, mapped_sr_sp, tg_sp):
         # similarites. sorting done on the opposite axis (inverse querying)
         rank_mx = np.zeros((tg_sp.mat.shape[0], mapped_sr_sp.mat.shape[0]),
                            dtype='float32')
-        logging.debug('rank_mx.shape={}'.format(rank_mx.shape))
+        logging.info('rank_mx.shape={}'.format(rank_mx.shape))
         split_size = 10000
         for start in range(0, rank_mx.shape[0], split_size):
             logging.info(
@@ -93,7 +95,7 @@ def get_sim_stat(additional, mapped_sr_sp, tg_sp):
             #logging.info("Computing cosines...")
             sim_block = - tg_sp.mat[start: end, :]*mapped_sr_sp.mat.T
             sim_block = sim_block.astype('float32')
-            #logging.debug("Sorting target space elements...")
+            #logging.info("Sorting target space elements...")
             rank_mx[start:end, :] = np.argsort(np.argsort(sim_block, axis=1),
                                                axis=1)
             #logging.info('Combining ranks with cosine similarities...')
@@ -126,8 +128,8 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
         translations = []
         for j in range(5):
             tg_sp_idx = rank_mx[j, mapped_sr_sp_idx]
-            word, score = tg_sp.id2word[tg_sp_idx], -sim_mx[tg_sp_idx, mapped_sr_sp_idx]
-            translations.append("\t\t%s:%.3f" % (word, score))
+            word, score_ = tg_sp.id2word[tg_sp_idx], -sim_mx[tg_sp_idx, mapped_sr_sp_idx]
+            translations.append("\t\t%s:%.3f" % (word, score_))
 
         translations = "\n".join(translations)
 
@@ -136,11 +138,11 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
                         [tg_sp.word2id[el] for el in gold[word1]])
         ranks.append(rnk)
 
-        logging.debug("Id: {}".format(len(ranks)))
-        logging.debug("\tSource: {}".format(word1))
-        logging.debug("\tTranslation: {}".format(translations))
-        logging.debug("\tGold: {}".format(' '.join(gold[word1])))
-        logging.debug("\tRank: {}".format(rnk))
+        logging.info("Id: {}".format(len(ranks)))
+        logging.info("\tSource: {}".format(word1))
+        logging.info("\tTranslation: {}".format(translations))
+        logging.info("\tGold: {}".format(' '.join(gold[word1])))
+        logging.info("\tRank: {}".format(rnk))
 
     logging.info("Corrected: %s" % str(additional))
     if additional:
@@ -152,11 +154,14 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
     return prec_at(ranks, 1)
 
 
-def default_output_fn(mx_path, source_fn, target_fn, seed_fn):
-    if os.isdir(mx_path):
+def default_output_fn(mx_path, seed_fn, source_fn, target_fn):
+    logging.debug(mx_path)
+    if mx_path and os.path.isdir(mx_path):
         mx_path = os.path.join(mx_path, '{}__{}__{}'.format(*[
-            os.path.splitext(os.path.basename(fn))
+            os.path.splitext(os.path.basename(fn))[0] 
             for fn in [source_fn, target_fn, seed_fn]]))
+    logging.debug(mx_path)
+    return mx_path 
 
 
 def get_logger(log_fn):
