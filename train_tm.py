@@ -1,5 +1,6 @@
 import argparse
 import logging
+import pickle
 
 import numpy as np
 
@@ -11,7 +12,9 @@ def parse_args():
         description="Given train data (pairs of words and their translation),\
         source language and target language vectors, it outputs a translation\
         matrix between source and target spaces.")
-    parser.add_argument('-o', '--mx_fn', help='including extension')
+    parser.add_argument('--mx_path', 
+                        help='directory or file name without extension',  
+                        default='/mnt/store/makrai/project/multiwsi/trans-mx/')
     parser.add_argument(
         'seed_fn',
         help="train dictionary, list of word pairs (space separated words,\
@@ -28,13 +31,13 @@ def parse_args():
     return parser.parse_args()
 
 
-def train_wrapper(seed_fn, source_fn, target_fn, reverse=False, mx_fn=None,
+def train_wrapper(seed_fn, source_fn, target_fn, reverse=False, mx_path=None,
                   train_size=5000):
-    train_data = read_dict(seed_fn, reverse=reverse)
+    seed_trans = read_dict(seed_fn, reverse=reverse)
 
     #we only need to load the vectors for the words in the training data
     #semantic spaces contain additional words
-    source_words, target_words = zip(*train_data)
+    source_words, target_words = zip(*seed_trans)
 
     source_sp = Space.build(source_fn, lexicon=set(source_words))
     source_sp.normalize()
@@ -43,11 +46,12 @@ def train_wrapper(seed_fn, source_fn, target_fn, reverse=False, mx_fn=None,
     target_sp.normalize()
 
     logging.info("Learning the translation matrix")
-    tm, used_for_train = train_tm(source_sp, target_sp, train_data, train_size)
+    tm, used_for_train = train_tm(source_sp, target_sp, seed_trans, train_size)
 
-    if mx_fn:
-        logging.info("Saving the translation matrix to {}".format(mx_fn))
-        np.save(mx_fn, tm)
+    logging.info("Saving the translation matrix to {}".format(mx_path))
+    np.save('{}.npy'.format(mx_path), tm)
+    pickle.dump(used_for_train, open('{}.train_wds'.format(used_for_train),
+                                     mode='w'))
 
     return tm, used_for_train
 
@@ -57,4 +61,4 @@ if __name__ == '__main__':
     format_ = "%(asctime)s %(module)s (%(lineno)s) %(levelname)s %(message)s"
     logging.basicConfig(level=logging.DEBUG, format=format_)
     train_wrapper(args.seed_fn, args.source_fn, args.target_fn,
-                  reverse=args.reverse, mx_fn=args.mx_fn)
+                  reverse=args.reverse, mx_path=args.mx_path)

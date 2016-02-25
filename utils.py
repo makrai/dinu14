@@ -1,4 +1,5 @@
 import logging
+import os
 
 import numpy as np
 
@@ -19,12 +20,12 @@ def get_rank(nn, gold):
 def read_dict(dict_filen, reverse=False, exclude=None, needed=-1):
     logging.info(
     "Reading {} translations from {} ".format(
-        needed if needed > 0 else 'all', 
+        needed if needed > 0 else 'all',
         dict_filen))
     if exclude:
         logging.debug('...(other than the {} that were used in training)'.format(
             len(exclude)))
-    pairs = []
+    pairs = dict()
     if not exclude:
         exclude = set()
     with open(dict_filen) as dict_file:
@@ -37,7 +38,7 @@ def read_dict(dict_filen, reverse=False, exclude=None, needed=-1):
                 pair = tuple(reversed(pair))
             if pair[0] in exclude:
                 continue
-            pairs.append(pair)
+            pairs[pair[0]] = pair[1]
     logging.debug('{} translations read'.format(len(pairs)))
     return pairs
 
@@ -46,35 +47,38 @@ def apply_tm(sp, tm):
 
     logging.info("Applying the translation matrix, size of data: %d" %
                  sp.mat.shape[0])
-    return Space(sp.mat*tm, sp.id2row)
+    return Space(sp.mat*tm, sp.id2word)
 
 
-def get_valid_data(sp1, sp2, data, needed=-1):
-    vdata = []
+def get_invocab_trans(sp1, sp2, seed_trans, needed=-1):
+    invoc_trans = []
     used_for_train = set()
     collected = 0
-    for el1,el2 in data:
-        if el1 in sp1.row2id and el2 in sp2.row2id:
-            if collected == needed:
-                break
-            collected += 1
-            vdata.append((el1, el2))
-            used_for_train.add(el1)
+    for word1 in sp1.word2id:
+        if collected == needed:
+            break
+        if word1 in seed_trans:
+            word2 = seed_trans[word1]
+            if word2 in sp2.word2id:
+                collected += 1
+                invoc_trans.append((word1, word2))
+                used_for_train.add(word1)
     logging.info("Using %d word pairs" % collected)
-    return vdata, used_for_train
+    return invoc_trans, used_for_train
 
 
-def train_tm(sp1, sp2, data, train_size):
-    data, used_for_train = get_valid_data(sp1, sp2, data, needed=train_size)
-    els1, els2 = zip(*data)
-    m1 = sp1.mat[[sp1.row2id[el] for el in els1],:]
-    m2 = sp2.mat[[sp2.row2id[el] for el in els2],:]
+def train_tm(sp1, sp2, seed_trans, train_size):
+    seed_trans, used_for_train = get_invocab_trans(sp1, sp2, seed_trans,
+                                                needed=train_size)
+    els1, els2 = zip(*seed_trans)
+    m1 = sp1.mat[[sp1.word2id[el] for el in els1],:]
+    m2 = sp2.mat[[sp2.word2id[el] for el in els2],:]
     tm = np.linalg.lstsq(m1, m2, -1)[0]
     return tm, used_for_train
 
 
 def get_sim_stat(additional, mapped_sr_sp, tg_sp):
-    if additional: 
+    if additional:
         # for each element, computes its rank in the ranked list of
         # similarites. sorting done on the opposite axis (inverse querying)
         rank_mx = np.zeros((tg_sp.mat.shape[0], mapped_sr_sp.mat.shape[0]),
@@ -96,7 +100,7 @@ def get_sim_stat(additional, mapped_sr_sp, tg_sp):
             # for each element, the resulting rank is combined with cosine
             # scores.  the effect will be of breaking the ties, because
             # cosines are smaller than 1. sorting done on the standard axis
-            # (regular NN querying) 
+            # (regular NN querying)
             rank_mx[start:end, :] += sim_block
 
         logging.info("Sorting by target...")
@@ -109,33 +113,33 @@ def get_sim_stat(additional, mapped_sr_sp, tg_sp):
     return sim_mx, rank_mx
 
 
-def score(mapped_sr_sp, tg_sp, gold, additional): 
-    mapped_sr_sp.normalize() 
+def score(mapped_sr_sp, tg_sp, gold, additional):
+    mapped_sr_sp.normalize()
     sim_mx, rank_mx = get_sim_stat(additional, mapped_sr_sp, tg_sp)
 
     ranks = []
-    for i,el1 in enumerate(gold):
+    for i,word1 in enumerate(gold):
 
-        mapped_sr_sp_idx = mapped_sr_sp.row2id[el1]
+        mapped_sr_sp_idx = mapped_sr_sp.word2id[word1]
 
         # append the top 5 translations
         translations = []
         for j in range(5):
             tg_sp_idx = rank_mx[j, mapped_sr_sp_idx]
-            word, score = tg_sp.id2row[tg_sp_idx], -sim_mx[tg_sp_idx, mapped_sr_sp_idx]
+            word, score = tg_sp.id2word[tg_sp_idx], -sim_mx[tg_sp_idx, mapped_sr_sp_idx]
             translations.append("\t\t%s:%.3f" % (word, score))
 
         translations = "\n".join(translations)
 
         #get the rank of the (highest-ranked) translation
         rnk = get_rank(rank_mx[:,mapped_sr_sp_idx].ravel(),
-                        [tg_sp.row2id[el] for el in gold[el1]])
+                        [tg_sp.word2id[el] for el in gold[word1]])
         ranks.append(rnk)
 
         logging.debug("Id: {}".format(len(ranks)))
-        logging.debug("\tSource: {}".format(el1))
+        logging.debug("\tSource: {}".format(word1))
         logging.debug("\tTranslation: {}".format(translations))
-        logging.debug("\tGold: {}".format(' '.join(gold[el1])))
+        logging.debug("\tGold: {}".format(' '.join(gold[word1])))
         logging.debug("\tRank: {}".format(rnk))
 
     logging.info("Corrected: %s" % str(additional))
@@ -146,6 +150,13 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
     for k in [1,5,10]:
         logging.info("Prec@%d: %.3f" % (k, prec_at(ranks, k)))
     return prec_at(ranks, 1)
+
+
+def default_output_fn(mx_path, source_fn, target_fn, seed_fn):
+    if os.isdir(mx_path):
+        mx_path = os.path.join(mx_path, '{}__{}__{}'.format(*[
+            os.path.splitext(os.path.basename(fn))
+            for fn in [source_fn, target_fn, seed_fn]]))
 
 
 def get_logger(log_fn):

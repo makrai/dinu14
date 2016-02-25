@@ -1,14 +1,14 @@
 import argparse
 import collections
-import random
-import logging
-import os
 from itertools import izip
+import logging
+import pickle
+import random
 
 import numpy as np
 
 from space import Space
-from dinu14.utils import read_dict, apply_tm, score, get_valid_data, get_logger
+from dinu14.utils import read_dict, apply_tm, score, get_invocab_trans, get_logger
 
 
 class MxTester():
@@ -16,25 +16,21 @@ class MxTester():
         self.additional = args.additional
         self.args = args
         self.tr_mx = tr_mx
-        if not exclude_from_test:
-            exclude_from_test = set()
         self.exclude_from_test = exclude_from_test
 
     def load_tr_mx(self):
         if self.args.mx_fn:
-            if self.tr_mx is not None:
-                raise Exception("Translation mx specified amibiguously.")
+            if self.tr_mx or self.exclude_from_test:
+                raise Exception(
+                    "Translation mx or training words specified amibiguously.")
             else:
-                logging.info("Loading the translation matrix")
-                _, ext = os.path.splitext(self.args.mx_fn)
-                if ext == '.npy':
-                    self.tr_mx = np.load(self.args.mx_fn)
-                elif ext == '.txt':
-                    self.tr_mx = np.loadtxt(self.args.mx_fn)
-                else:
-                    raise Exception(
-                        'Unknown extension for translation matrix: {}'.format(
-                            ext))
+                logging.info("Loading the translation matrix and words \
+                             excluded from test")
+                self.exclude_from_test = pickle.load(open(
+                    '{}.train_wds'.format(args.mx_fn)))
+                self.tr_mx = np.load('{}.npy'.format(args.mx_fn))
+        elif not self.tr_mx  or not self.exclude_from_test:
+            raise Exception('Translation matrix or training words unspecified')
 
     def test_wrapper(self):
         self.load_tr_mx()
@@ -42,21 +38,21 @@ class MxTester():
         logging.info('The denominator of precision {} OOV words'.format(
                           'includes' if self.args.coverage 
                           else "doesn't include"))
-        test_data = read_dict(self.args.seed_fn, reverse=self.args.reverse,
-                              needed=1000 if self.args.coverage else -1,
-                              exclude=self.exclude_from_test)
+        test_wpairs = read_dict(self.args.seed_fn, reverse=self.args.reverse,
+                                needed=1000 if self.args.coverage else -1,
+                                exclude=self.exclude_from_test)
 
-        source_sp = self.build_src_wrapper(self.args.source_fn, test_data)
+        source_sp = self.build_src_wrapper(self.args.source_fn, test_wpairs)
 
         target_sp = Space.build(self.args.target_fn)
         target_sp.normalize()
 
-        test_data, _ = get_valid_data(source_sp, target_sp, test_data,
-                                      needed=1000)
+        test_wpairs, _ = get_invocab_trans(source_sp, target_sp,
+                                              test_wpairs, needed=1000)
 
         #turn test data into a dictionary (a word can have mutiple translation)
         gold = collections.defaultdict(set)
-        for sr, tg in test_data:
+        for sr, tg in test_wpairs:
             gold[sr].add(tg)
 
         logging.info(
@@ -66,17 +62,17 @@ class MxTester():
             logging.info("Printing mapped vectors: %s" % self.args.mapped_vecs)
             np.savetxt("%s.vecs.txt" % self.args.mapped_vecs, mapped_source_sp.mat)
             np.savetxt("%s.wds.txt" %
-                       self.args.mapped_vecs, mapped_source_sp.id2row, fmt="%s")
+                       self.args.mapped_vecs, mapped_source_sp.id2word, fmt="%s")
 
         return score(mapped_source_sp, target_sp, gold, self.additional)
 
-    def build_src_wrapper(self, source_file, test_data):
+    def build_src_wrapper(self, source_file, test_wpairs):
         """
-        In the _source_ space, we only need to load vectors for the words in test.
-        Semantic spaces may contain additional words.
+        In the _source_ space, we only need to load vectors for the words in
+        test.  Semantic spaces may contain additional words.
         All words in the _target_ space are used as the search space
         """
-        source_words, _ = izip(*test_data)
+        source_words, _ = izip(*test_wpairs)
         source_words = set(source_words)
         if self.additional:
             #read all the words in the space
@@ -108,14 +104,14 @@ def parse_args():
         Example:\n\
         1) Retrieve translations with standard nearest neighbour retrieval\n\
         \n\
-        python test_tm.py tm.npy test_data.txt ENspace.txt ITspace.txt\n\
+        python test_tm.py tm.npy test_wpairs.txt ENspace.txt ITspace.txt\n\
         \n\
         2) "Corrected" retrieval (GC). Use additional 2000 source space\n\
         elements to correct for hubs (words that appear as the nearest\n\
         neighbours of many points))\n\
         \n\
-        python -c 2000 test_tm.py tm.npy test_data.txt ENspace.txt ITspace.txt')
-    parser.add_argument('mx_fn', help='translation matrix')
+        python -c 2000 test_tm.py tm.npy test_wpairs.txt ENspace.txt ITspace.txt')
+    parser.add_argument('mx_fn', help='translation matrix file without extension')
     parser.add_argument(
         'seed_fn',
         help="train dictionary, list of word pairs (space separated words,\
