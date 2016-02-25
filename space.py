@@ -22,7 +22,7 @@ class Space(object):
 
 
     @classmethod
-    def build(cls, fname, lexicon=None):
+    def build(cls, fname, lexicon=None, max_rows=None):
         logging.info("Looking up {} words in {}".format(
             len(lexicon) if lexicon else 'all', fname))
 
@@ -41,8 +41,11 @@ class Space(object):
         #get the number of columns
         with open(fname) as f:
             ncols = int(f.readline().strip().split()[1]) + 1
-            m = np.asmatrix(np.loadtxt(filter_lines(f), comments=None,
-                                       usecols=range(1,ncols)))
+            m = np.loadtxt(filter_lines(f), comments=None,
+                           usecols=range(1,ncols))
+            if max_rows:
+                m = m[:max_rows]
+            m = np.asmatrix(m)
             logging.info('Embedding of shape {} {} read.'.format(*m.shape))
 
         return Space(m, id2word)

@@ -53,7 +53,7 @@ def apply_tm(sp, tm):
 
 
 def get_invocab_trans(sp1, sp2, seed_trans, needed=-1):
-    invoc_trans = []
+    invoc_trans = defaultdict(set)
     used_for_train = set()
     collected = 0
     for word1 in sp1.word2id:
@@ -63,9 +63,9 @@ def get_invocab_trans(sp1, sp2, seed_trans, needed=-1):
             for word2 in seed_trans[word1]:
                 if word2 in sp2.word2id:
                     collected += 1
-                    invoc_trans.append((word1, word2))
+                    invoc_trans[word1].add(word2)
                     used_for_train.add(word1)
-    logging.info("Using %d word pairs" % collected)
+    logging.info("Using {} word pairs".format(collected))
     return invoc_trans, used_for_train
 
 
@@ -121,6 +121,8 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
 
     ranks = []
     for i,word1 in enumerate(gold):
+        if word1 not in mapped_sr_sp.word2id:
+            continue
 
         mapped_sr_sp_idx = mapped_sr_sp.word2id[word1]
 
@@ -155,12 +157,10 @@ def score(mapped_sr_sp, tg_sp, gold, additional):
 
 
 def default_output_fn(mx_path, seed_fn, source_fn, target_fn):
-    logging.debug(mx_path)
     if mx_path and os.path.isdir(mx_path):
         mx_path = os.path.join(mx_path, '{}__{}__{}'.format(*[
             os.path.splitext(os.path.basename(fn))[0] 
             for fn in [source_fn, target_fn, seed_fn]]))
-    logging.debug(mx_path)
     return mx_path 
 
 

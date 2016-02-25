@@ -69,7 +69,7 @@ class MxTester():
             np.savetxt("%s.wds.txt" %
                        self.args.mapped_vecs, mapped_source_sp.id2word, fmt="%s")
 
-        return score(mapped_source_sp, target_sp, gold, self.additional)
+        return score(mapped_source_sp, target_sp, test_wpairs, self.additional)
 
     def build_src_wrapper(self, source_file, test_wpairs):
         """
@@ -92,9 +92,12 @@ class MxTester():
                                     self.additional)
 
             #load the source space
-            source_sp = Space.build(source_file, source_words.union(set(lexicon)))
+            source_sp = Space.build(source_file,
+                                    lexicon=source_words.union(set(lexicon)),
+                                    max_rows=1000)
         else:
-            source_sp = Space.build(source_file, source_words) 
+            source_sp = Space.build(source_file, lexicon=source_words,
+                                    max_rows=1000) 
         source_sp.normalize()
         return source_sp
 
