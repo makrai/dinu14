@@ -1,6 +1,4 @@
-import argparse
-import collections
-from itertools import izip
+import argparse 
 import logging
 import pickle
 import random
